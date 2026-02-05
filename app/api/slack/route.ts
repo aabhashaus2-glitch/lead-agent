@@ -159,7 +159,6 @@ if (slackApp && receiver) {
         
         // Update the Slack message to show rejection
         const channelId = (body as any)?.channel?.id;
-        const messageTs = (body as any)?.message?.ts;
         
         console.log('[DEBUG REJECT] Updating Slack message...');
         console.log('[DEBUG REJECT] - Channel ID:', channelId);

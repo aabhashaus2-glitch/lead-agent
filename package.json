@@ -14,6 +14,7 @@
     "@radix-ui/react-slot": "^1.2.3",
     "@slack/bolt": "^4.6.0",
     "@slack/web-api": "^7.13.0",
+    "@vercel/kv": "^1.0.1",
     "@vercel/slack-bolt": "^1.0.2",
     "ai": "^5.0.68",
     "botid": "^1.5.10",
