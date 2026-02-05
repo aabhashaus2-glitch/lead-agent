@@ -100,7 +100,7 @@ if (slackApp && receiver) {
           }
         } else {
           console.warn('[WARN APPROVE] No email content found in message metadata');
-          console.log('[DEBUG APPROVE] Full message object:', JSON.stringify(message, null, 2));
+          console.log('[DEBUG APPROVE] Full message object:', JSON.stringify((body as any)?.message, null, 2));
           console.log('[DEBUG APPROVE] Sending fallback email...');
           const sendResult = await sendEmail('Send email to the lead');
           console.log('[DEBUG APPROVE] ✓ Fallback email sent, result:', sendResult);

@@ -44,19 +44,19 @@ export async function storeEmail(ts: string, email: string): Promise<void> {
 /**
  * Retrieve email from Vercel KV
  */
-export async function getEmail(ts: string): Promise<string | null> {
+export async function getEmail(ts: string): Promise<string | undefined> {
   try {
     console.log('[DEBUG KV] Retrieving email with key:', ts);
-    
-    const email = await kv.get(`email:${ts}`);
+
+    const email = await kv.get<string>(`email:${ts}`);
     
     if (email) {
-      console.log('[DEBUG KV] ✓ Email retrieved, length:', (email as string).length);
+      console.log('[DEBUG KV] ✓ Email retrieved, length:', email.length);
     } else {
       console.log('[DEBUG KV] Email not found in KV');
     }
-    
-    return email as string | null;
+
+    return email ?? undefined;
   } catch (error) {
     console.error('[ERROR KV] Failed to retrieve email:', error);
     throw error;
