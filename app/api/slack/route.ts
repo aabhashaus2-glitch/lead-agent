@@ -25,7 +25,7 @@ if (slackApp && receiver) {
 
   slackApp.action(
     'lead_approved',
-    async ({ body, action, ack, client, logger }) => {
+    async ({ body, action, ack, client, logger, respond }) => {
       try {
         console.log('[DEBUG APPROVE] ========== APPROVE BUTTON CLICKED ==========');
         console.log('[DEBUG APPROVE] Acknowledging action...');
@@ -50,66 +50,94 @@ if (slackApp && receiver) {
         const messageTs = (body as any)?.message?.ts;
         console.log('[DEBUG APPROVE] Message timestamp:', messageTs);
         
-        let emailContent: string | undefined = undefined;
-        
-        if (messageTs) {
-          console.log('[DEBUG APPROVE] Retrieving email from KV...');
-          emailContent = await getEmail(messageTs);
-          console.log('[DEBUG APPROVE] Email retrieved from KV:', !!emailContent);
-          
-          if (emailContent) {
-            console.log('[DEBUG APPROVE] Email length from KV:', emailContent.length);
-            console.log('[DEBUG APPROVE] Email preview from KV:', emailContent.substring(0, 100));
-          }
-        }
-        
-        if (emailContent) {
-          console.log('[DEBUG APPROVE] ✓ Email extracted successfully');
-          console.log('[DEBUG APPROVE] Email preview:', emailContent.substring(0, 100));
-          
-          console.log('[DEBUG APPROVE] Sending email...');
-          const sendResult = await sendEmail(emailContent);
-          console.log('[DEBUG APPROVE] ✓ Email sent, result:', sendResult);
-          
-          // Update the Slack message to show approval
-          const channelId = (body as any)?.channel?.id;
-          const messageTs = (body as any)?.message?.ts;
-          
-          console.log('[DEBUG APPROVE] Updating Slack message...');
-          console.log('[DEBUG APPROVE] - Channel ID:', channelId);
-          console.log('[DEBUG APPROVE] - Message TS:', messageTs);
-          
-          if (channelId && messageTs) {
-            console.log('[DEBUG APPROVE] Calling chat.update...');
-            const updateResult = await client.chat.update({
-              channel: channelId,
-              ts: messageTs,
-              text: ':white_check_mark: Email approved and sent!',
-              blocks: [
-                {
-                  type: 'section',
-                  text: {
-                    type: 'mrkdwn',
-                    text: ':white_check_mark: *Email Approved!* This email has been sent to the lead.'
-                  }
+        // IMPORTANT: Do not block the Slack interactive request.
+        // Slack expects a fast 200 response (within ~3 seconds). We already ack()'d.
+        // Do the slow work asynchronously.
+        void (async () => {
+          try {
+            let emailContent: string | undefined = undefined;
+
+            if (messageTs) {
+              console.log('[DEBUG APPROVE] Retrieving email from KV...');
+              emailContent = await getEmail(messageTs);
+              console.log('[DEBUG APPROVE] Email retrieved from KV:', !!emailContent);
+
+              if (emailContent) {
+                console.log('[DEBUG APPROVE] Email length from KV:', emailContent.length);
+                console.log('[DEBUG APPROVE] Email preview from KV:', emailContent.substring(0, 100));
+              }
+            }
+
+            if (emailContent) {
+              console.log('[DEBUG APPROVE] ✓ Email extracted successfully');
+              console.log('[DEBUG APPROVE] Sending email...');
+              const sendResult = await sendEmail(emailContent);
+              console.log('[DEBUG APPROVE] ✓ Email sent, result:', sendResult);
+
+              // Prefer respond() (uses response_url) to avoid extra API calls.
+              if (respond) {
+                await respond({
+                  replace_original: true,
+                  text: ':white_check_mark: Email approved and sent!',
+                  blocks: [
+                    {
+                      type: 'section',
+                      text: {
+                        type: 'mrkdwn',
+                        text: ':white_check_mark: *Email Approved!* This email has been sent to the lead.'
+                      }
+                    }
+                  ]
+                });
+                console.log('[DEBUG APPROVE] ✓ Slack message updated via respond()');
+              } else {
+                // Fallback to chat.update
+                const channelId = (body as any)?.channel?.id;
+                if (channelId && messageTs) {
+                  const updateResult = await client.chat.update({
+                    channel: channelId,
+                    ts: messageTs,
+                    text: ':white_check_mark: Email approved and sent!',
+                    blocks: [
+                      {
+                        type: 'section',
+                        text: {
+                          type: 'mrkdwn',
+                          text: ':white_check_mark: *Email Approved!* This email has been sent to the lead.'
+                        }
+                      }
+                    ]
+                  });
+                  console.log('[DEBUG APPROVE] ✓ Slack message updated via chat.update');
+                  console.log('[DEBUG APPROVE] Update result:', updateResult);
                 }
-              ]
-            });
-            console.log('[DEBUG APPROVE] ✓ Slack message updated successfully');
-            console.log('[DEBUG APPROVE] Update result:', updateResult);
-          } else {
-            console.warn('[WARN APPROVE] Missing channel ID or message TS - cannot update message');
-            console.warn('[WARN APPROVE] channelId:', channelId, 'messageTs:', messageTs);
+              }
+            } else {
+              console.warn('[WARN APPROVE] No email content found in KV for message ts:', messageTs);
+              if (respond) {
+                await respond({
+                  replace_original: false,
+                  text: ':warning: Could not find the email draft for this message. (KV not configured or expired)' 
+                });
+              }
+            }
+
+            console.log('[DEBUG APPROVE] ========== APPROVE BUTTON PROCESSING COMPLETE ==========');
+          } catch (error) {
+            console.error('[ERROR APPROVE] Background processing failed:', error);
+            logger?.error(`Error in lead_approved background task: ${error}`);
+            try {
+              if (respond) {
+                await respond({
+                  replace_original: false,
+                  text: ':warning: Approval received, but processing failed. Check server logs.'
+                });
+              }
+            } catch {
+              // ignore
+            }
           }
-        } else {
-          console.warn('[WARN APPROVE] No email content found in message metadata');
-          console.log('[DEBUG APPROVE] Full message object:', JSON.stringify((body as any)?.message, null, 2));
-          console.log('[DEBUG APPROVE] Sending fallback email...');
-          const sendResult = await sendEmail('Send email to the lead');
-          console.log('[DEBUG APPROVE] ✓ Fallback email sent, result:', sendResult);
-        }
-        
-        console.log('[DEBUG APPROVE] ========== APPROVE BUTTON PROCESSING COMPLETE ==========');
+        })();
       } catch (error) {
         console.error('[ERROR APPROVE] ========== APPROVE ACTION FAILED ==========');
         console.error('[ERROR APPROVE] Error:', error);
@@ -123,7 +151,7 @@ if (slackApp && receiver) {
 
   slackApp.action(
     'lead_rejected',
-    async ({ body, action, ack, client, logger }) => {
+    async ({ body, action, ack, client, logger, respond }) => {
       try {
         console.log('[DEBUG REJECT] ========== REJECT BUTTON CLICKED ==========');
         console.log('[DEBUG REJECT] Acknowledging action...');
@@ -148,49 +176,68 @@ if (slackApp && receiver) {
         const messageTs = (body as any)?.message?.ts;
         console.log('[DEBUG REJECT] Message timestamp:', messageTs);
         
-        let emailContent: string | undefined = undefined;
-        
-        if (messageTs) {
-          console.log('[DEBUG REJECT] Retrieving email from KV...');
-          emailContent = await getEmail(messageTs);
-          console.log('[DEBUG REJECT] Email retrieved from KV:', !!emailContent);
-          
-          if (emailContent) {
-            console.log('[DEBUG REJECT] Email length from KV:', emailContent.length);
-          }
-        }
-        
-        // Update the Slack message to show rejection
-        const channelId = (body as any)?.channel?.id;
-        
-        console.log('[DEBUG REJECT] Updating Slack message...');
-        console.log('[DEBUG REJECT] - Channel ID:', channelId);
-        console.log('[DEBUG REJECT] - Message TS:', messageTs);
-        
-        if (channelId && messageTs) {
-          console.log('[DEBUG REJECT] Calling chat.update...');
-          const updateResult = await client.chat.update({
-            channel: channelId,
-            ts: messageTs,
-            text: ':x: Email rejected',
-            blocks: [
-              {
-                type: 'section',
-                text: {
-                  type: 'mrkdwn',
-                  text: ':x: *Email Rejected* - This email will not be sent.'
-                }
+        // IMPORTANT: respond fast; do slow work asynchronously.
+        void (async () => {
+          try {
+            if (messageTs) {
+              console.log('[DEBUG REJECT] Retrieving email from KV...');
+              const emailContent = await getEmail(messageTs);
+              console.log('[DEBUG REJECT] Email retrieved from KV:', !!emailContent);
+            }
+
+            if (respond) {
+              await respond({
+                replace_original: true,
+                text: ':x: Email rejected',
+                blocks: [
+                  {
+                    type: 'section',
+                    text: {
+                      type: 'mrkdwn',
+                      text: ':x: *Email Rejected* - This email will not be sent.'
+                    }
+                  }
+                ]
+              });
+              console.log('[DEBUG REJECT] ✓ Slack message updated via respond()');
+            } else {
+              const channelId = (body as any)?.channel?.id;
+              if (channelId && messageTs) {
+                const updateResult = await client.chat.update({
+                  channel: channelId,
+                  ts: messageTs,
+                  text: ':x: Email rejected',
+                  blocks: [
+                    {
+                      type: 'section',
+                      text: {
+                        type: 'mrkdwn',
+                        text: ':x: *Email Rejected* - This email will not be sent.'
+                      }
+                    }
+                  ]
+                });
+                console.log('[DEBUG REJECT] ✓ Slack message updated via chat.update');
+                console.log('[DEBUG REJECT] Update result:', updateResult);
               }
-            ]
-          });
-          console.log('[DEBUG REJECT] ✓ Slack message updated successfully');
-          console.log('[DEBUG REJECT] Update result:', updateResult);
-        } else {
-          console.warn('[WARN REJECT] Missing channel ID or message TS - cannot update message');
-          console.warn('[WARN REJECT] channelId:', channelId, 'messageTs:', messageTs);
-        }
-        
-        console.log('[DEBUG REJECT] ========== REJECT BUTTON PROCESSING COMPLETE ==========');
+            }
+
+            console.log('[DEBUG REJECT] ========== REJECT BUTTON PROCESSING COMPLETE ==========');
+          } catch (error) {
+            console.error('[ERROR REJECT] Background processing failed:', error);
+            logger?.error(`Error in lead_rejected background task: ${error}`);
+            try {
+              if (respond) {
+                await respond({
+                  replace_original: false,
+                  text: ':warning: Rejection received, but processing failed. Check server logs.'
+                });
+              }
+            } catch {
+              // ignore
+            }
+          }
+        })();
       } catch (error) {
         console.error('[ERROR REJECT] ========== REJECT ACTION FAILED ==========');
         console.error('[ERROR REJECT] Error:', error);
