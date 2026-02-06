@@ -8,12 +8,18 @@ const logLevel =
   process.env.NODE_ENV === 'development' ? LogLevel.DEBUG : LogLevel.INFO;
 
 const hasSlackCredentials =
-  process.env.SLACK_BOT_TOKEN && process.env.SLACK_SIGNING_SECRET;
+  !!process.env.SLACK_BOT_TOKEN && !!process.env.SLACK_SIGNING_SECRET;
+
+const hasKvCredentials =
+  !!process.env.KV_REST_API_URL &&
+  !!process.env.KV_REST_API_TOKEN &&
+  !!process.env.KV_REST_API_READ_ONLY_TOKEN;
 
 console.log('[DEBUG SLACK INIT] NODE_ENV:', process.env.NODE_ENV);
 console.log('[DEBUG SLACK INIT] Has SLACK_BOT_TOKEN:', !!process.env.SLACK_BOT_TOKEN);
 console.log('[DEBUG SLACK INIT] Has SLACK_SIGNING_SECRET:', !!process.env.SLACK_SIGNING_SECRET);
 console.log('[DEBUG SLACK INIT] hasSlackCredentials:', hasSlackCredentials);
+console.log('[DEBUG SLACK INIT] Has KV credentials:', hasKvCredentials);
 
 if (!hasSlackCredentials) {
   console.warn(

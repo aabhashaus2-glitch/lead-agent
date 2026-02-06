@@ -2,6 +2,9 @@ import { createHandler } from '@vercel/slack-bolt';
 import { slackApp, receiver, getEmail } from '@/lib/slack';
 import { sendEmail } from '@/lib/services';
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
 console.log('[DEBUG ROUTE INIT] Slack route module initialized');
 console.log('[DEBUG ROUTE INIT] slackApp exists:', !!slackApp);
 console.log('[DEBUG ROUTE INIT] receiver exists:', !!receiver);
@@ -222,6 +225,25 @@ export const POST = slackHandler
       console.log('[DEBUG SLACK ROUTE] URL:', request.url);
       console.log('[DEBUG SLACK ROUTE] Method:', request.method);
       console.log('[DEBUG SLACK ROUTE] Content-Type:', request.headers.get('content-type'));
+      console.log(
+        '[DEBUG SLACK ROUTE] Has x-slack-signature header:',
+        !!request.headers.get('x-slack-signature')
+      );
+      console.log(
+        '[DEBUG SLACK ROUTE] Has x-slack-request-timestamp header:',
+        !!request.headers.get('x-slack-request-timestamp')
+      );
+
+      // Safe diagnostics: clone body to log basic structure without consuming the original request.
+      try {
+        const cloned = request.clone();
+        const rawBody = await cloned.text();
+        console.log('[DEBUG SLACK ROUTE] Raw body length:', rawBody.length);
+        console.log('[DEBUG SLACK ROUTE] Raw body has payload field:', rawBody.includes('payload='));
+      } catch (e) {
+        console.warn('[WARN SLACK ROUTE] Unable to read cloned body for diagnostics');
+        console.warn('[WARN SLACK ROUTE] Diagnostic error:', (e as any)?.message);
+      }
       
       try {
         console.log('[DEBUG SLACK ROUTE] Calling Slack handler...');
