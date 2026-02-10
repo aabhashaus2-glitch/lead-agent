@@ -58,6 +58,7 @@ This is a mock research response for testing purposes. Replace with real researc
  * step to write an email for the lead
  */
 export const stepWriteEmail = async (
+  data: FormSchema,
   research: string,
   qualification: QualificationSchema
 ) => {
@@ -65,7 +66,7 @@ export const stepWriteEmail = async (
 
   try {
     console.log('[DEBUG] stepWriteEmail called');
-    const email = await writeEmail(research, qualification);
+    const email = await writeEmail(data, research, qualification);
     console.log('[DEBUG] stepWriteEmail completed, length:', email.length);
     return email;
   } catch (error) {

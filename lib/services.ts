@@ -13,46 +13,187 @@ import {
 import { sendSlackMessageWithButtons } from '@/lib/slack';
 import { z } from 'zod';
 import { exa } from '@/lib/exa';
+import {
+  QUALIFICATION_CONFIG,
+  hasRedFlags,
+  isSupportRequest,
+  countQualitySignals
+} from '@/lib/qualification-rules';
 
 /**
- * Qualify the lead
+ * Qualify the lead using AI with business rules
+ * 
+ * Decision Process:
+ * 1. Check for SUPPORT keywords/patterns → SUPPORT
+ * 2. Check for RED FLAGS → UNQUALIFIED
+ * 3. Use LLM to analyze fit against ICP → QUALIFIED or FOLLOW_UP
  */
 export async function qualify(
   lead: FormSchema,
   research: string
 ): Promise<QualificationSchema> {
   try {
-    console.log('[DEBUG] qualify called - using default response');
-    // For testing, return a default qualification
+    console.log('[DEBUG] qualify called - using AI-driven qualification');
+
+    // STEP 1: Check if this is a support request
+    if (isSupportRequest(lead.message, QUALIFICATION_CONFIG)) {
+      console.log('[DEBUG] Support keywords detected - routing to SUPPORT');
+      return {
+        category: 'SUPPORT',
+        reason: 'Support request keywords detected. Route to support team for technical assistance.'
+      };
+    }
+
+    // STEP 2: Check for red flags
+    const redFlagCheck = hasRedFlags(lead, QUALIFICATION_CONFIG);
+    if (redFlagCheck.flagged) {
+      console.log('[DEBUG] Red flags detected:', redFlagCheck.reason);
+      return {
+        category: 'UNQUALIFIED',
+        reason: redFlagCheck.reason || 'Lead does not match business criteria'
+      };
+    }
+
+    // STEP 3: Count quality signals for quick assessment
+    const signals = countQualitySignals(lead.message, QUALIFICATION_CONFIG);
+    console.log('[DEBUG] Quality signals detected:', signals);
+
+    // STEP 4: Use LLM to perform detailed analysis
+    console.log('[DEBUG] Performing LLM-based qualification analysis...');
+    
+    const result = await generateObject({
+      model: 'openai/gpt-4o-mini', // Using mini for cost efficiency
+      system: `You are a B2B SaaS lead qualification expert. Analyze leads against the business's Ideal Customer Profile (ICP) and rules.
+
+QUALIFICATION RULES:
+${JSON.stringify(QUALIFICATION_CONFIG, null, 2)}
+
+Your job is to classify the lead into ONE of these categories:
+- QUALIFIED: High-fit leads ready for immediate sales engagement (large company, clear need, budget signals)
+- FOLLOW_UP: Interested but wrong timing or growth potential (startup, exploratory, future plans)  
+- UNQUALIFIED: Poor fit (already checked red flags, but verify other factors)
+- SUPPORT: Not a sales lead (support request, existing customer issue, partnership inquiry)
+
+Provide your analysis with clear reasoning.`,
+      prompt: `Analyze this lead against our ICP and qualification rules:
+
+LEAD DATA:
+- Name: ${lead.name}
+- Email: ${lead.email}
+- Company: ${lead.company || 'Not provided'}
+- Phone: ${lead.phone || 'Not provided'}
+- Message: ${lead.message}
+
+RESEARCH FINDINGS:
+${research}
+
+SIGNALS DETECTED:
+- Urgency mentions: ${signals.urgency}
+- Business need mentions: ${signals.need}
+- Budget signals: ${signals.budget}
+- Decision-maker signals: ${signals.decisionMaker}
+
+Based on the ICP and rules provided, classify this lead into QUALIFIED, FOLLOW_UP, UNQUALIFIED, or SUPPORT.
+Provide your confidence level (0-100) and detailed reasoning for the classification.`,
+      schema: z.object({
+        category: qualificationSchema.shape.category,
+        reason: z.string().describe('Clear explanation of why this lead falls into this category'),
+        confidence: z.number().min(0).max(100).describe('Confidence level in this classification (0-100)'),
+        icpScore: z.number().min(0).max(100).describe('How well this lead matches the ICP (0-100)'),
+        keyFactors: z.array(z.string()).describe('Top 3-5 factors that influenced this decision')
+      })
+    });
+
+    console.log('[DEBUG] LLM qualification complete:', {
+      category: result.object.category,
+      confidence: result.object.confidence,
+      icpScore: result.object.icpScore
+    });
+
+    // Log confidence for human review if below threshold
+    if (result.object.confidence < QUALIFICATION_CONFIG.confidenceThresholds.requireHumanReviewThreshold) {
+      console.warn('[DEBUG] Low confidence qualification - recommend human review');
+    }
+
     return {
-      category: 'QUALIFIED',
-      reason: 'Test lead - using default qualification'
+      category: result.object.category,
+      reason: `[${result.object.confidence}% confidence] ${result.object.reason}
+      
+Key Factors: ${result.object.keyFactors.join(', ')}
+ICP Match Score: ${result.object.icpScore}/100`
     };
   } catch (error) {
     console.error('[ERROR] qualify failed:', error);
-    // Return a default qualification so workflow can continue
+    // Return a safer default for failures
     return {
       category: 'FOLLOW_UP',
-      reason: 'Unable to qualify - using default follow-up category'
+      reason: `Qualification error: ${error instanceof Error ? error.message : 'Unknown error'}. Defaulting to FOLLOW_UP for safety.`
     };
   }
 }
 
 /**
- * Write an email
+ * Write a personalized email based on lead data and qualification
+ * Uses LLM to generate contextual, personalized responses
  */
 export async function writeEmail(
+  lead: FormSchema,
   research: string,
   qualification: QualificationSchema
 ) {
   try {
-    console.log('[DEBUG] writeEmail called - using default response');
-    // For testing, return a default email
-    return `Dear Lead,\n\nThank you for your interest in our company. We would like to follow up with you about your inquiry.\n\nBest regards,\nOur Team`;
+    console.log('[DEBUG] writeEmail called - generating personalized email with LLM');
+
+    const emailTone = qualification.category === 'QUALIFIED' 
+      ? 'urgent and sales-focused' 
+      : qualification.category === 'FOLLOW_UP'
+      ? 'exploratory and nurturing'
+      : 'professional';
+
+    const result = await generateText({
+      model: 'openai/gpt-4o-mini',
+      system: `You are an expert sales email writer. Generate a personalized, professional email response to a lead inquiry.
+      
+KEY GUIDELINES:
+- Use the lead's actual name (NOT "Dear Lead")
+- Reference their company if provided
+- Address their specific request/pain point from their message
+- Match the tone to the qualification category: ${emailTone}
+- Keep it concise (3-4 paragraphs max)
+- Include a clear call-to-action
+- Sign with a professional closing
+- Do NOT include subject line - only the email body
+
+QUALIFICATION CONTEXT:
+- Category: ${qualification.category}
+- Confidence: ${qualification.reason}
+`,
+      prompt: `Generate a personalized email for this lead:
+
+LEAD INFORMATION:
+- Name: ${lead.name}
+- Email: ${lead.email}
+- Company: ${lead.company || 'Not provided'}
+- Phone: ${lead.phone || 'Not provided'}
+- Their Message/Request: "${lead.message}"
+
+RESEARCH FINDINGS:
+${research}
+
+QUALIFICATION ASSESSMENT:
+${qualification.reason}
+
+Write the personalized email response now:`
+    });
+
+    console.log('[DEBUG] Personalized email generated successfully, length:', result.text.length);
+    return result.text;
   } catch (error) {
     console.error('[ERROR] writeEmail failed:', error);
-    // Return a default email so workflow can continue
-    return `Dear Lead,\n\nThank you for your interest. We would like to follow up with you.\n\nBest regards`;
+    // Return a fallback personalized email if LLM fails
+    const fallbackEmail = `Dear ${lead.name},\n\nThank you for reaching out to us regarding your interest in our platform for ${lead.company ? lead.company : 'your team'}.\n\nWe appreciate your inquiry and would like to learn more about your needs. We'll be in touch soon with more information.\n\nBest regards,\nOur Team`;
+    console.log('[DEBUG] Using fallback personalized email');
+    return fallbackEmail;
   }
 }
 

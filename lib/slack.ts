@@ -31,8 +31,15 @@ if (!hasSlackCredentials) {
 
 /**
  * Store email in Vercel KV (works on serverless)
+ * In development without KV, this gracefully skips storage
  */
 export async function storeEmail(ts: string, email: string): Promise<void> {
+  // Skip KV storage if credentials are not configured (development mode)
+  if (!hasKvCredentials) {
+    console.log('[DEBUG KV] KV not configured - skipping email storage (development mode)');
+    return;
+  }
+
   try {
     console.log('[DEBUG KV] Storing email with key:', ts);
     console.log('[DEBUG KV] Email length:', email.length);
@@ -43,6 +50,11 @@ export async function storeEmail(ts: string, email: string): Promise<void> {
     console.log('[DEBUG KV] ✓ Email stored successfully');
   } catch (error) {
     console.error('[ERROR KV] Failed to store email:', error);
+    // Don't throw in development - just log and continue
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('[WARN KV] Continuing without KV storage in development mode');
+      return;
+    }
     throw error;
   }
 }

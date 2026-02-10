@@ -36,7 +36,7 @@ export const workflowInbound = async (data: FormSchema) => {
       qualification.category === 'FOLLOW_UP'
     ) {
       console.log('[DEBUG WORKFLOW] Step 3: Write Email');
-      const email = await stepWriteEmail(research, qualification);
+      const email = await stepWriteEmail(data, research, qualification);
       console.log('[DEBUG WORKFLOW] Email written, length:', email.length);
 
       console.log('[DEBUG WORKFLOW] Step 4: Human Feedback');
