@@ -1,8 +1,10 @@
 import {
   humanFeedback,
   qualify,
-  writeEmail
+  writeEmail,
+  researchWithTimeout
 } from '@/lib/services';
+import { performBackgroundVerification } from '@/lib/background-verification';
 import { FormSchema, QualificationSchema } from '@/lib/types';
 
 /**
@@ -24,35 +26,190 @@ export const stepQualify = async (data: FormSchema, research: string) => {
 
 /**
  * step to research the lead
+ * 
+ * Performs REAL background verification and research including:
+ * - Email domain validation and reputation check
+ * - Company background research (funding, team size, location)
+ * - Decision-maker verification via LinkedIn
+ * - Tech stack analysis for compatibility
+ * - Financial health and red flag detection
+ * - AI agent-based comprehensive research
  */
 export const stepResearch = async (data: FormSchema) => {
   'use step';
 
   try {
-    console.log('[DEBUG] stepResearch called');
-    
-    // For now, return mock research to test Slack integration
-    // In production, replace with real research
-    const mockResearch = `
-Research Summary for ${data.name}:
-- Email: ${data.email}
-- Phone: ${data.phone}
-- Company: ${data.company || 'Not provided'}
-- Message: ${data.message}
+    console.log('[RESEARCH] ========== STARTING REAL LEAD RESEARCH ==========');
+    console.log('[RESEARCH] Lead:', data.name, 'Company:', data.company);
 
-This is a mock research response for testing purposes. Replace with real research agent when needed.
+    // PHASE 1: BACKGROUND VERIFICATION
+    console.log('[RESEARCH] Phase 1: Running background verification...');
+    const verification = await performBackgroundVerification(data);
+
+    // PHASE 2: AI AGENT RESEARCH
+    console.log('[RESEARCH] Phase 2: Running AI agent research...');
+    const researchPrompt = `
+Research this lead comprehensively:
+
+LEAD INFORMATION:
+- Name: ${data.name}
+- Email: ${data.email}
+- Company: ${data.company || 'Not provided'}
+- Phone: ${data.phone || 'Not provided'}
+- Message/Request: "${data.message}"
+
+BACKGROUND VERIFICATION RESULTS:
+${formatVerificationResults(verification)}
+
+Please use the tools available to:
+1. Search for more recent news about this company
+2. Verify the person's professional background
+3. Assess market fit and opportunity potential
+4. Identify growth stage and funding status
+5. Research any partnerships or integrations relevant to our product
+
+Synthesize all findings into a comprehensive research report.
     `.trim();
-    
-    console.log('[DEBUG] stepResearch completed, length:', mockResearch.length);
-    return mockResearch;
+
+    const agentResearch = await researchWithTimeout(researchPrompt);
+    console.log('[RESEARCH] AI agent research completed, length:', agentResearch.length);
+
+    // PHASE 3: COMPILE COMPLETE RESEARCH REPORT
+    const completeResearch = compileResearchReport(data, verification, agentResearch);
+
+    console.log('[RESEARCH] ========== RESEARCH COMPLETE ==========');
+    console.log('[RESEARCH] Report length:', completeResearch.length);
+    return completeResearch;
   } catch (error) {
     console.error('[ERROR] stepResearch failed:', error);
     // Return a fallback so the workflow can continue
-    const fallback = `Lead data: ${JSON.stringify(data)}`;
+    const fallback = `Lead data: ${JSON.stringify({
+      name: data.name,
+      email: data.email,
+      company: data.company,
+      message: data.message,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    })}`;
     console.log('[DEBUG] stepResearch using fallback');
     return fallback;
   }
 };
+
+/**
+ * Format verification results for research prompt
+ */
+function formatVerificationResults(verification: any): string {
+  return `
+EMAIL VERIFICATION:
+- Valid Corporate Email: ${verification.email.valid}
+- Domain: ${verification.email.domain}
+- Domain Reputation: ${verification.email.domainReputation}
+
+COMPANY INFORMATION:
+- Found: ${verification.company.found}
+- Name: ${verification.company.name}
+- Industry: ${verification.company.industry}
+- Employees: ${verification.company.employees}
+- Location: ${verification.company.location}
+- Website: ${verification.company.website}
+- LinkedIn: ${verification.company.linkedinUrl || 'Not found'}
+- Summary: ${verification.company.description}
+
+DECISION-MAKER VERIFICATION:
+- Title Valid: ${verification.decisionMaker.titleValid}
+- Title Level: ${verification.decisionMaker.titleLevel}
+- LinkedIn Verified: ${verification.decisionMaker.linkedinMatch || false}
+- LinkedIn URL: ${verification.decisionMaker.linkedinUrl || 'Not found'}
+
+TECH STACK ANALYSIS:
+- Detected Technologies: ${verification.techStack.primaryTechs.join(', ') || 'Unknown'}
+- Compatibility: ${verification.techStack.compatibility}
+- Analysis: ${verification.techStack.matchAnalysis}
+
+FINANCIAL HEALTH:
+- Status: ${verification.financialHealth.status}
+- Red Flags: ${verification.financialHealth.redFlags.length > 0 ? verification.financialHealth.redFlags.join(', ') : 'None detected'}
+- Recent News: ${verification.financialHealth.recentNews.slice(0, 3).join('; ') || 'No recent news found'}
+
+RISK ASSESSMENT:
+- Overall Risk: ${verification.riskFactors.overall}
+- Risk Factors: ${verification.riskFactors.factors.join('; ')}
+- Recommendations: ${verification.riskFactors.recommendations.join('; ')}
+  `.trim();
+}
+
+/**
+ * Compile complete research report
+ */
+function compileResearchReport(data: FormSchema, verification: any, agentResearch: string): string {
+  return `
+═══════════════════════════════════════════════════════════════
+                  COMPREHENSIVE LEAD RESEARCH REPORT
+═══════════════════════════════════════════════════════════════
+
+LEAD PROFILE:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Name: ${data.name}
+Email: ${data.email} (${verification.email.valid ? '✓ Corporate' : '✗ Personal'})
+Company: ${data.company || 'Not provided'}
+Phone: ${data.phone || 'Not provided'}
+Request: "${data.message}"
+
+BACKGROUND VERIFICATION RESULTS:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📧 EMAIL VERIFICATION:
+  • Domain: ${verification.email.domain}
+  • Reputation: ${verification.email.domainReputation} (${verification.email.valid ? 'Corporate email' : 'Personal email'})
+  • Domain Age: ${verification.email.domainAge}
+  • MX Records Valid: ${verification.email.mxRecords ? 'Yes' : 'No'}
+
+🏢 COMPANY BACKGROUND:
+  • Name: ${verification.company.name}
+  • Found in Public Records: ${verification.company.found ? 'Yes' : 'No'}
+  • Industry: ${verification.company.industry}
+  • Company Size: ${verification.company.employees}
+  • Location: ${verification.company.location}
+  • Website: ${verification.company.website}
+  • LinkedIn Profile: ${verification.company.linkedinUrl ? 'Found' : 'Not found'}
+  
+  Company Summary:
+  ${verification.company.description}
+
+👤 DECISION-MAKER ANALYSIS:
+  • Name: ${data.name}
+  • Title Valid: ${verification.decisionMaker.titleValid ? 'Yes - Buying authority' : 'No - Verify role'}
+  • Authority Level: ${verification.decisionMaker.titleLevel}
+  • LinkedIn Verified: ${verification.decisionMaker.linkedinMatch ? 'Yes' : 'No'}
+  ${verification.decisionMaker.linkedinUrl ? `  • LinkedIn: ${verification.decisionMaker.linkedinUrl}` : ''}
+
+🛠️ TECHNOLOGY COMPATIBILITY:
+  • Detected Tech Stack: ${verification.techStack.primaryTechs.length > 0 ? verification.techStack.primaryTechs.join(', ') : 'Unknown'}
+  • Product Compatibility: ${verification.techStack.compatibility === 'high' ? '✓ High' : verification.techStack.compatibility === 'medium' ? '~ Medium' : '✗ Low'}
+  • Analysis: ${verification.techStack.matchAnalysis}
+
+💰 FINANCIAL HEALTH:
+  • Company Status: ${verification.financialHealth.status}
+  • Red Flags: ${verification.financialHealth.redFlags.length > 0 ? verification.financialHealth.redFlags.join(', ') : 'None detected ✓'}
+  • Recent News:
+    ${verification.financialHealth.recentNews.slice(0, 3).map(n => `    • ${n}`).join('\n')}
+
+⚠️ RISK ASSESSMENT:
+  • Overall Risk Level: ${verification.riskFactors.overall.toUpperCase()}
+  • Risk Factors:
+    ${verification.riskFactors.factors.map(f => `    • ${f}`).join('\n')}
+  • Recommendations:
+    ${verification.riskFactors.recommendations.map(r => `    • ${r}`).join('\n')}
+
+DETAILED AI RESEARCH ANALYSIS:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${agentResearch}
+
+═══════════════════════════════════════════════════════════════
+Generated: ${new Date().toISOString()}
+═══════════════════════════════════════════════════════════════
+  `.trim();
+}
 
 /**
  * step to write an email for the lead
