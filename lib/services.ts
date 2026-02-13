@@ -567,9 +567,9 @@ export async function researchWithTimeout(prompt: string): Promise<string> {
   console.log('[DEBUG] Starting research with timeout protection');
   
   try {
-    // Set a 60-second timeout for the research (background verification + AI research)
+    // Set a 90-second timeout for the research (background verification + AI research)
     const timeoutPromise = new Promise<string>((_, reject) =>
-      setTimeout(() => reject(new Error('Research timeout after 60 seconds')), 60000)
+      setTimeout(() => reject(new Error('Research timeout after 90 seconds')), 90000)
     );
     
     const researchPromise = researchAgent.generate({ prompt });
