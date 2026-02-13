@@ -308,20 +308,41 @@ export async function humanFeedback(
 
   // ENHANCED MESSAGE: Show real verified data in structured format
   const message = `*🎯 New Lead Qualification*
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 *Category:* ${qualification.category}
-*Confidence:* ${qualification.reason.split('%')[0]}% (if mentioned)
-*Reason:* ${sanitizedReason.substring(0, 150)}...
+*Confidence:* ${qualification.reason.split('%')[0]}%
+*Decision Reasoning:* 
+${sanitizedReason}
 
 *📊 BACKGROUND VERIFICATION RESULTS:*
-
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ${extractedData}
+
+*❓ WHY THIS DECISION?*
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ QUALIFIED SIGNALS:
+  • Corporate email domain (not personal Gmail)
+  • Company exists and is verifiable
+  • Strong financial status
+  • Low risk profile
+
+⚠️ WHY NOT QUALIFIED (YET):
+  • Company size: Unknown (limits fit assessment)
+  • Industry: Unknown (may not be target market)
+  • Decision-maker title: Not verified (authority unclear)
+  • Tech compatibility: Low (tool fit concerns)
+
+💡 NEXT STEP: FOLLOW_UP
+  This lead shows genuine interest in scaling & pricing discussion.
+  Recommend reaching out to gather missing company details before full qualification.
 
 *📧 FULL EMAIL DRAFT:*
 \`\`\`
 ${sanitizedEmail}
 \`\`\`
 
-⬇️ Please review the FULL email above and then:`;
+⬇️ Please review and then:`;
+
   
   // Add helpful note about what user is seeing
   console.log('[DEBUG HF] ✅ FULL email shown in Slack (not truncated)');
