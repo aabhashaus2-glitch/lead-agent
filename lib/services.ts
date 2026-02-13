@@ -198,6 +198,85 @@ Write the personalized email response now:`
 }
 
 /**
+ * Extract key background verification fields from research report for Slack display
+ */
+function extractBackgroundVerificationFields(research: string): string {
+  try {
+    // Extract company info
+    const companyMatch = research.match(/🏢 COMPANY BACKGROUND:(.*?)👤 DECISION-MAKER/s);
+    const companyText = companyMatch ? companyMatch[1].trim() : '';
+    
+    // Extract decision maker info
+    const dmMatch = research.match(/👤 DECISION-MAKER ANALYSIS:(.*?)🛠️ TECHNOLOGY/s);
+    const dmText = dmMatch ? dmMatch[1].trim() : '';
+    
+    // Extract tech stack
+    const techMatch = research.match(/🛠️ TECHNOLOGY COMPATIBILITY:(.*?)💰 FINANCIAL/s);
+    const techText = techMatch ? techMatch[1].trim() : '';
+    
+    // Extract financial health
+    const finMatch = research.match(/💰 FINANCIAL HEALTH:(.*?)⚠️ RISK/s);
+    const finText = finMatch ? finMatch[1].trim() : '';
+    
+    // Extract risk
+    const riskMatch = research.match(/⚠️ RISK ASSESSMENT:(.*?)DETAILED AI/s);
+    const riskText = riskMatch ? riskMatch[1].trim() : '';
+    
+    // Format for Slack display - show only key data points
+    const emailRegex = /Email: (.*?)($|\n)/;
+    const emailMatch = research.match(emailRegex);
+    const emailVal = emailMatch ? emailMatch[1].trim() : 'Unknown';
+    
+    const companyRegex = /Company: (.*?)($|\n)/;
+    const companyMatchVal = research.match(companyRegex);
+    const companyVal = companyMatchVal ? companyMatchVal[1].trim() : 'Unknown';
+    
+    // Extract size if available
+    const sizeRegex = /employees?:\s*([\d,+]+[^,\n]*)/i;
+    const sizeMatch = companyText.match(sizeRegex);
+    const sizeVal = sizeMatch ? sizeMatch[1].trim() : 'Unknown';
+    
+    // Extract industry if available
+    const industryRegex = /Industry:\s*([^\n]+)/;
+    const industryMatch = companyText.match(industryRegex);
+    const industryVal = industryMatch ? industryMatch[1].trim() : 'Unknown';
+    
+    // Extract decision maker
+    const dmRegex = /Title Level:\s*([^\n]+)/;
+    const dmLevelMatch = dmText.match(dmRegex);
+    const dmLevelVal = dmLevelMatch ? dmLevelMatch[1].trim() : 'Unknown';
+    
+    // Extract tech compatibility
+    const techRegex = /Compatibility:\s*([^\n]+)/;
+    const techCompatMatch = techText.match(techRegex);
+    const techCompatVal = techCompatMatch ? techCompatMatch[1].trim() : 'Unknown';
+    
+    // Extract financial status
+    const finStatusRegex = /Status:\s*([^\n]+)/;
+    const finStatusMatch = finText.match(finStatusRegex);
+    const finStatusVal = finStatusMatch ? finStatusMatch[1].trim() : 'Unknown';
+    
+    // Extract risk level
+    const riskLevelRegex = /Overall Risk Level:\s*([^\n]+)/;
+    const riskLevelMatch = riskText.match(riskLevelRegex);
+    const riskLevelVal = riskLevelMatch ? riskLevelMatch[1].trim() : 'Unknown';
+    
+    // Build clean summary
+    return `✉️ Email: ${emailVal}
+🏢 Company: ${companyVal}
+👥 Company Size: ${sizeVal}
+🏭 Industry: ${industryVal}
+👤 Decision-Maker Level: ${dmLevelVal}
+🛠️ Tech Compatibility: ${techCompatVal}
+💰 Financial Status: ${finStatusVal}
+⚠️ Risk Level: ${riskLevelVal}`;
+  } catch (error) {
+    console.error('[ERROR] Failed to extract verification fields:', error);
+    return 'Background verification data processing...';
+  }
+}
+
+/**
  * Send the research and qualification to the human for approval in slack
  */
 export async function humanFeedback(
@@ -212,12 +291,9 @@ export async function humanFeedback(
   console.log('[DEBUG HF] Qualification category:', qualification?.category);
   console.log('[DEBUG HF] Qualification reason:', qualification?.reason);
   
-  // Sanitize and format the message for Slack
-  const sanitizedResearch = research
-    .slice(0, 300)
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .trim();
+  // Extract key background verification data for Slack display
+  // Parse the research report to get actual field values
+  const extractedData = extractBackgroundVerificationFields(research);
   
   // SHOW FULL EMAIL (not truncated) so you can review before approving/rejecting
   const sanitizedEmail = email
@@ -230,13 +306,15 @@ export async function humanFeedback(
     .replace(/>/g, '&gt;')
     .trim();
 
-  // ENHANCED MESSAGE: Show full email preview so user can review completely
-  const message = `*New Lead Qualification*
+  // ENHANCED MESSAGE: Show real verified data in structured format
+  const message = `*🎯 New Lead Qualification*
 *Category:* ${qualification.category}
-*Reason:* ${sanitizedReason}
+*Confidence:* ${qualification.reason.split('%')[0]}% (if mentioned)
+*Reason:* ${sanitizedReason.substring(0, 150)}...
 
-*Research Summary:*
-${sanitizedResearch}...
+*📊 BACKGROUND VERIFICATION RESULTS:*
+
+${extractedData}
 
 *📧 FULL EMAIL DRAFT:*
 \`\`\`
@@ -248,6 +326,7 @@ ${sanitizedEmail}
   // Add helpful note about what user is seeing
   console.log('[DEBUG HF] ✅ FULL email shown in Slack (not truncated)');
   console.log('[DEBUG HF] Email length shown:', sanitizedEmail.length);
+  console.log('[DEBUG HF] Background verification data extracted for display');
   console.log('[DEBUG HF] User can now review complete email before approving/rejecting');
 
   const slackChannel = process.env.SLACK_CHANNEL_ID || '';
