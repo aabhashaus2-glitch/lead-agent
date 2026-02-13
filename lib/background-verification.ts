@@ -479,6 +479,7 @@ export async function performBackgroundVerification(
     // Return a partial verification with error info
     return {
       email: { valid: false, domain: '', domainAge: 'Unknown', domainReputation: 'unknown', mxRecords: false },
+      phone: { valid: false, reason: 'Verification process failed' },
       company: { name: lead.company || 'Unknown', found: false, description: `Verification error: ${error instanceof Error ? error.message : 'Unknown'}`, employees: 'Unknown', funding: 'Unknown', industry: 'Unknown', location: 'Unknown', website: '' },
       decisionMaker: { titleValid: false, titleLevel: 'Unknown' },
       techStack: { primaryTechs: [], compatibility: 'unknown', matchAnalysis: 'Verification failed' },
