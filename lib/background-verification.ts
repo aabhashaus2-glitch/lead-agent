@@ -147,7 +147,6 @@ export async function researchCompany(
     const result = await exa.searchAndContents(searchQuery, {
       numResults: 3,
       type: 'keyword',
-      category: 'company',
       summary: true
     });
 
@@ -223,7 +222,6 @@ export async function verifyDecisionMaker(
     const linkedinSearch = await exa.searchAndContents(`${name} ${company} site:linkedin.com`, {
       numResults: 1,
       type: 'keyword',
-      category: 'linkedin profile',
       summary: true
     });
 
@@ -320,7 +318,6 @@ export async function checkFinancialHealth(
     const result = await exa.searchAndContents(searchQuery, {
       numResults: 3,
       type: 'keyword',
-      category: 'news',
       summary: true
     });
 
