@@ -219,8 +219,8 @@ export async function humanFeedback(
     .replace(/>/g, '&gt;')
     .trim();
   
+  // SHOW FULL EMAIL (not truncated) so you can review before approving/rejecting
   const sanitizedEmail = email
-    .slice(0, 250)
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .trim();
@@ -230,6 +230,7 @@ export async function humanFeedback(
     .replace(/>/g, '&gt;')
     .trim();
 
+  // ENHANCED MESSAGE: Show full email preview so user can review completely
   const message = `*New Lead Qualification*
 *Category:* ${qualification.category}
 *Reason:* ${sanitizedReason}
@@ -237,17 +238,24 @@ export async function humanFeedback(
 *Research Summary:*
 ${sanitizedResearch}...
 
-*Email Draft:*
-${sanitizedEmail}...
+*📧 FULL EMAIL DRAFT:*
+\`\`\`
+${sanitizedEmail}
+\`\`\`
 
-Please review and approve or reject this email`;
+⬇️ Please review the FULL email above and then:`;
+  
+  // Add helpful note about what user is seeing
+  console.log('[DEBUG HF] ✅ FULL email shown in Slack (not truncated)');
+  console.log('[DEBUG HF] Email length shown:', sanitizedEmail.length);
+  console.log('[DEBUG HF] User can now review complete email before approving/rejecting');
 
   const slackChannel = process.env.SLACK_CHANNEL_ID || '';
   
   console.log('[DEBUG HF] Slack Channel:', slackChannel);
   console.log('[DEBUG HF] Message length:', message.length);
-  console.log('[DEBUG HF] Message preview:', message.substring(0, 200));
-  console.log('[DEBUG HF] Sanitized email to pass to Slack:', sanitizedEmail.substring(0, 100));
+  console.log('[DEBUG HF] Full email is now visible in Slack (not truncated)');
+  console.log('[DEBUG HF] Email will be sent with full content on approval');
   
   if (!slackChannel) {
     console.error('[ERROR HF] SLACK_CHANNEL_ID is empty');
@@ -256,8 +264,8 @@ Please review and approve or reject this email`;
 
   try {
     console.log('[DEBUG HF] Calling sendSlackMessageWithButtons...');
-    console.log('[DEBUG HF] - Email content to send as metadata:', email.substring(0, 50) + '...');
-    console.log('[DEBUG HF] - Email content length:', email.length);
+    console.log('[DEBUG HF] Full email content available for approval');
+    console.log('[DEBUG HF] Email content length to send:', email.length);
     
     const result = await sendSlackMessageWithButtons(slackChannel, message, email);
     
