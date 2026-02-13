@@ -21,6 +21,10 @@ export interface VerificationResult {
     domainReputation: 'high' | 'medium' | 'low' | 'unknown';
     mxRecords: boolean;
   };
+  phone: {
+    valid: boolean;
+    reason: string;
+  };
   company: {
     name: string;
     found: boolean;
@@ -54,6 +58,58 @@ export interface VerificationResult {
     factors: string[];
     recommendations: string[];
   };
+}
+
+/**
+ * Validate phone number - check for fake/test numbers
+ */
+export function validatePhoneNumber(phone: string): { valid: boolean; reason: string } {
+  if (!phone || phone.length === 0) {
+    return { valid: true, reason: 'Phone not provided (optional)' };
+  }
+
+  // Extract only digits
+  const digitsOnly = phone.replace(/\D/g, '');
+
+  // Check minimum length (at least 10 digits)
+  if (digitsOnly.length < 10) {
+    return { valid: false, reason: 'Phone number too short (less than 10 digits)' };
+  }
+
+  // Check for common test/fake numbers
+  const testNumbers = [
+    '1234567890', '0123456789', '9876543210', // Sequential
+    '1111111111', '2222222222', '3333333333', '4444444444', // Repeated digits
+    '5555555555', '6666666666', '7777777777', '8888888888', '9999999999',
+    '0000000000', // All zeros
+    '5550000000', '5550001111', '5550002222', // Test ranges (555 area code)
+    '2015550000', // Test number (20155...)
+  ];
+
+  if (testNumbers.includes(digitsOnly)) {
+    return { valid: false, reason: 'Phone number appears to be a test/fake number' };
+  }
+
+  // Check for too many repeated digits (>6 same digit in a row is suspicious)
+  const repeatedDigits = /(\d)\1{6,}/.test(digitsOnly);
+  if (repeatedDigits) {
+    return { valid: false, reason: 'Phone number has too many repeated digits (suspicious)' };
+  }
+
+  // Check if number is mostly sequential
+  let sequentialCount = 0;
+  for (let i = 0; i < digitsOnly.length - 1; i++) {
+    const current = parseInt(digitsOnly[i]);
+    const next = parseInt(digitsOnly[i + 1]);
+    if (Math.abs(next - current) === 1) {
+      sequentialCount++;
+    }
+  }
+  if (sequentialCount > digitsOnly.length * 0.6) {
+    return { valid: false, reason: 'Phone number appears to be sequential (test number)' };
+  }
+
+  return { valid: true, reason: 'Phone number format valid' };
 }
 
 /**
@@ -334,12 +390,15 @@ export async function performBackgroundVerification(
     const emailValidation = validateEmailDomain(lead.email);
     const emailDomainInfo = extractDomainAge(lead.email.split('@')[1]);
 
-    // 2. COMPANY RESEARCH
+    // 2. PHONE VALIDATION (NEW)
+    const phoneValidation = validatePhoneNumber(lead.phone || '');
+
+    // 3. COMPANY RESEARCH
     const companyInfo = await researchCompany(lead.company || 'Unknown', 
       emailValidation.domain !== '' ? emailValidation.domain : undefined
     );
 
-    // 3. DECISION-MAKER VERIFICATION
+    // 4. DECISION-MAKER VERIFICATION
     const decisionMakerInfo = await verifyDecisionMaker(
       lead.name,
       'Professional', // We don't have title, but we verify the request
@@ -347,24 +406,25 @@ export async function performBackgroundVerification(
       lead.email
     );
 
-    // 4. TECH STACK ANALYSIS
+    // 5. TECH STACK ANALYSIS
     const techStackInfo = await analyzeTechStack(
       lead.company || 'Unknown',
       emailValidation.domain !== '' ? emailValidation.domain : undefined
     );
 
-    // 5. FINANCIAL HEALTH CHECK
+    // 6. FINANCIAL HEALTH CHECK
     const financialInfo = await checkFinancialHealth(
       lead.company || 'Unknown',
       emailValidation.domain !== '' ? emailValidation.domain : undefined
     );
 
-    // 6. RISK ASSESSMENT
+    // 7. RISK ASSESSMENT
     const riskFactors = assessRiskFactors(
       emailValidation,
       companyInfo,
       decisionMakerInfo,
-      financialInfo
+      financialInfo,
+      phoneValidation
     );
 
     const verification: VerificationResult = {
@@ -374,6 +434,10 @@ export async function performBackgroundVerification(
         domainAge: emailDomainInfo.age,
         domainReputation: emailDomainInfo.reputation,
         mxRecords: true // In production, check actual MX records
+      },
+      phone: {
+        valid: phoneValidation.valid,
+        reason: phoneValidation.reason
       },
       company: {
         name: lead.company || 'Not provided',
@@ -484,7 +548,8 @@ function assessRiskFactors(
   email: ReturnType<typeof validateEmailDomain> & any,
   company: Partial<VerificationResult['company']>,
   decisionMaker: Partial<VerificationResult['decisionMaker']>,
-  financial: Partial<VerificationResult['financialHealth']>
+  financial: Partial<VerificationResult['financialHealth']>,
+  phone: ReturnType<typeof validatePhoneNumber>
 ): VerificationResult['riskFactors'] {
   const factors: string[] = [];
   const recommendations: string[] = [];
@@ -492,6 +557,12 @@ function assessRiskFactors(
   // Email risks
   if (!email.valid) {
     factors.push('Personal email domain (not corporate)');
+  }
+
+  // Phone risks (NEW)
+  if (!phone.valid) {
+    factors.push(`Suspicious phone number: ${phone.reason}`);
+    recommendations.push('Contact lead to verify phone number');
   }
 
   // Company risks
