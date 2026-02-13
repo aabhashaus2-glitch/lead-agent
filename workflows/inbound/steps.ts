@@ -192,14 +192,14 @@ BACKGROUND VERIFICATION RESULTS:
   • Company Status: ${verification.financialHealth.status}
   • Red Flags: ${verification.financialHealth.redFlags.length > 0 ? verification.financialHealth.redFlags.join(', ') : 'None detected ✓'}
   • Recent News:
-    ${verification.financialHealth.recentNews.slice(0, 3).map(n => `    • ${n}`).join('\n')}
+    ${verification.financialHealth.recentNews.slice(0, 3).map((n: string) => `    • ${n}`).join('\n')}
 
 ⚠️ RISK ASSESSMENT:
   • Overall Risk Level: ${verification.riskFactors.overall.toUpperCase()}
   • Risk Factors:
-    ${verification.riskFactors.factors.map(f => `    • ${f}`).join('\n')}
+    ${verification.riskFactors.factors.map((f: string) => `    • ${f}`).join('\n')}
   • Recommendations:
-    ${verification.riskFactors.recommendations.map(r => `    • ${r}`).join('\n')}
+    ${verification.riskFactors.recommendations.map((r: string) => `    • ${r}`).join('\n')}
 
 DETAILED AI RESEARCH ANALYSIS:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
