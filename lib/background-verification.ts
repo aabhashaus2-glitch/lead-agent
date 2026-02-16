@@ -390,30 +390,54 @@ export async function performBackgroundVerification(
     // 2. PHONE VALIDATION (NEW)
     const phoneValidation = validatePhoneNumber(lead.phone || '');
 
-    // 3-6. RUN COMPANY RESEARCH IN PARALLEL (faster than sequential)
-    console.log('[BG-VERIFY] Running 4 research tasks in parallel for speed...');
-    const [companyInfo, decisionMakerInfo, techStackInfo, financialInfo] = 
-      await Promise.all([
-        researchCompany(lead.company || 'Unknown', 
-          emailValidation.domain !== '' ? emailValidation.domain : undefined
-        ),
-        verifyDecisionMaker(
-          lead.name,
-          'Professional',
-          lead.company || 'Unknown',
-          lead.email
-        ),
+    // 3-6. RUN COMPANY RESEARCH WITH DELAYS (free tier rate limiting)
+    console.log('[BG-VERIFY] Running research tasks sequentially with delays for free tier API...');
+    
+    // Essential: Company research
+    const companyInfo = await researchCompany(lead.company || 'Unknown', 
+      emailValidation.domain !== '' ? emailValidation.domain : undefined
+    );
+    await new Promise(resolve => setTimeout(resolve, 500)); // 500ms delay
+    
+    // Essential: Decision-maker verification
+    const decisionMakerInfo = await verifyDecisionMaker(
+      lead.name,
+      'Professional',
+      lead.company || 'Unknown',
+      lead.email
+    );
+    await new Promise(resolve => setTimeout(resolve, 500)); // 500ms delay
+    
+    // Optional: Tech stack analysis (fail fast if timeout)
+    let techStackInfo = { primaryTechs: [], compatibility: 'unknown' as const, matchAnalysis: 'Skipped (free tier)' };
+    try {
+      techStackInfo = await Promise.race([
         analyzeTechStack(
           lead.company || 'Unknown',
           emailValidation.domain !== '' ? emailValidation.domain : undefined
         ),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Tech stack timeout - skipping')), 5000))
+      ]);
+      await new Promise(resolve => setTimeout(resolve, 500)); // 500ms delay
+    } catch (error) {
+      console.log('[BG-VERIFY] Tech stack analysis skipped (timeout on free tier)');
+    }
+    
+    // Optional: Financial health check (fail fast if timeout)
+    let financialInfo = { status: 'unknown' as const, redFlags: [], funding: 'Unknown', recentNews: [] };
+    try {
+      financialInfo = await Promise.race([
         checkFinancialHealth(
           lead.company || 'Unknown',
           emailValidation.domain !== '' ? emailValidation.domain : undefined
-        )
+        ),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Financial health timeout - skipping')), 5000))
       ]);
+    } catch (error) {
+      console.log('[BG-VERIFY] Financial health check skipped (timeout on free tier)');
+    }
 
-    console.log('[BG-VERIFY] Parallel research tasks completed');
+    console.log('[BG-VERIFY] Sequential research tasks completed');
 
     // 7. RISK ASSESSMENT
     const riskFactors = assessRiskFactors(
