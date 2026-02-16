@@ -390,30 +390,30 @@ export async function performBackgroundVerification(
     // 2. PHONE VALIDATION (NEW)
     const phoneValidation = validatePhoneNumber(lead.phone || '');
 
-    // 3. COMPANY RESEARCH
-    const companyInfo = await researchCompany(lead.company || 'Unknown', 
-      emailValidation.domain !== '' ? emailValidation.domain : undefined
-    );
+    // 3-6. RUN COMPANY RESEARCH IN PARALLEL (faster than sequential)
+    console.log('[BG-VERIFY] Running 4 research tasks in parallel for speed...');
+    const [companyInfo, decisionMakerInfo, techStackInfo, financialInfo] = 
+      await Promise.all([
+        researchCompany(lead.company || 'Unknown', 
+          emailValidation.domain !== '' ? emailValidation.domain : undefined
+        ),
+        verifyDecisionMaker(
+          lead.name,
+          'Professional',
+          lead.company || 'Unknown',
+          lead.email
+        ),
+        analyzeTechStack(
+          lead.company || 'Unknown',
+          emailValidation.domain !== '' ? emailValidation.domain : undefined
+        ),
+        checkFinancialHealth(
+          lead.company || 'Unknown',
+          emailValidation.domain !== '' ? emailValidation.domain : undefined
+        )
+      ]);
 
-    // 4. DECISION-MAKER VERIFICATION
-    const decisionMakerInfo = await verifyDecisionMaker(
-      lead.name,
-      'Professional', // We don't have title, but we verify the request
-      lead.company || 'Unknown',
-      lead.email
-    );
-
-    // 5. TECH STACK ANALYSIS
-    const techStackInfo = await analyzeTechStack(
-      lead.company || 'Unknown',
-      emailValidation.domain !== '' ? emailValidation.domain : undefined
-    );
-
-    // 6. FINANCIAL HEALTH CHECK
-    const financialInfo = await checkFinancialHealth(
-      lead.company || 'Unknown',
-      emailValidation.domain !== '' ? emailValidation.domain : undefined
-    );
+    console.log('[BG-VERIFY] Parallel research tasks completed');
 
     // 7. RISK ASSESSMENT
     const riskFactors = assessRiskFactors(
