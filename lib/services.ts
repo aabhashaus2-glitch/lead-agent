@@ -598,7 +598,7 @@ Provide actionable insights for the sales team.
     });
 
     console.log('[RESEARCH] Deep research analysis completed');
-    return deepAnalysis;
+    return deepAnalysis.text;
   } catch (error) {
     console.error('[ERROR] Deep research failed:', error);
     // Graceful fallback - use verification data as fallback
