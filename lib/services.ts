@@ -285,16 +285,19 @@ export async function humanFeedback(
   qualification: QualificationSchema
 ) {
   console.log('[DEBUG HF] ========== HUMAN FEEDBACK INITIATED ==========');
-  console.log('[DEBUG HF] Qualification category:', qualification?.category);
+  console.log('[DEBUG HF] Category:', qualification?.category);
   console.log('[DEBUG HF] Email length:', email?.length || 'no email');
+  console.log('[DEBUG HF] Research length:', research?.length || 'no research');
   
   // Extract key background verification data for Slack display
   const extractedData = extractBackgroundVerificationFields(research);
   
   const slackChannel = process.env.SLACK_CHANNEL_ID || '';
   
+  console.log('[DEBUG HF] SLACK_CHANNEL_ID env var:', slackChannel ? '✓ SET' : '✗ NOT SET');
+  
   if (!slackChannel) {
-    console.error('[ERROR HF] SLACK_CHANNEL_ID is empty');
+    console.error('[ERROR HF] SLACK_CHANNEL_ID is empty or not configured');
     throw new Error('SLACK_CHANNEL_ID environment variable is not set');
   }
 
@@ -351,11 +354,17 @@ ${extractedData}
 ${extractedData}
 
 📋 Lead logged for analytics and archival`;
+  } else {
+    console.warn('[WARN HF] Unknown category:', qualification.category);
   }
+
+  console.log('[DEBUG HF] Message built successfully');
+  console.log('[DEBUG HF] Message length:', message.length);
+  console.log('[DEBUG HF] About to send to Slack channel:', slackChannel);
 
   try {
     console.log('[DEBUG HF] Calling sendSlackMessageWithButtons...');
-    console.log('[DEBUG HF] Category:', qualification.category);
+    console.log('[DEBUG HF] Parameters: channel=', slackChannel, ', category=', qualification.category);
     
     const result = await sendSlackMessageWithButtons(
       slackChannel, 
@@ -365,14 +374,17 @@ ${extractedData}
     );
     
     console.log('[DEBUG HF] ✓ Slack message sent successfully');
+    console.log('[DEBUG HF] Message timestamp:', result.messageTs);
     console.log('[DEBUG HF] ========== HUMAN FEEDBACK COMPLETE ==========');
     
     return result;
   } catch (error) {
-    console.error('[ERROR HF] ========== HUMAN FEEDBACK FAILED ==========');;
-    console.error('[ERROR HF] Failed to send Slack message:', error);
+    console.error('[ERROR HF] ========== HUMAN FEEDBACK FAILED ==========');
+    console.error('[ERROR HF] Failed to send Slack message');
+    console.error('[ERROR HF] Error:', error);
     console.error('[ERROR HF] Error message:', (error as any)?.message);
-    console.error('[ERROR HF] Error stack:', (error as any)?.stack);
+    console.error('[ERROR HF] Error code:', (error as any)?.code);
+    console.error('[ERROR HF] Stack trace:', (error as any)?.stack);
     throw error;
   }
 }

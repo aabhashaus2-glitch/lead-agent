@@ -194,7 +194,9 @@ export async function sendSlackMessageWithButtons(
   }
 
   // Send message with blocks including conditional action buttons
-  console.log('[DEBUG SLACK] Calling chat.postMessage...');
+  console.log('[DEBUG SLACK] Preparing to send message...');
+  console.log('[DEBUG SLACK] Action elements count:', actionElements.length);
+  
   try {
     const blocks: any[] = [
       {
@@ -212,7 +214,13 @@ export async function sendSlackMessageWithButtons(
         type: 'actions',
         elements: actionElements
       });
+      console.log('[DEBUG SLACK] Added action buttons block');
+    } else {
+      console.log('[DEBUG SLACK] No action buttons for this category');
     }
+    
+    console.log('[DEBUG SLACK] Blocks count:', blocks.length);
+    console.log('[DEBUG SLACK] Calling chat.postMessage with channel:', channel);
     
     const result = await slackApp.client.chat.postMessage({
       channel,
@@ -221,19 +229,29 @@ export async function sendSlackMessageWithButtons(
     });
 
     console.log('[DEBUG SLACK] ✓ chat.postMessage succeeded');
+    console.log('[DEBUG SLACK] Response ok:', result.ok);
     console.log('[DEBUG SLACK] Message ts:', result.ts);
     console.log('[DEBUG SLACK] Channel:', result.channel);
 
     if (!result.ok || !result.ts) {
-      console.error('[ERROR SLACK] Response not ok or missing ts');
+      console.error('[ERROR SLACK] chat.postMessage response not ok or missing ts');
+      console.error('[ERROR SLACK] Result.ok:', result.ok);
+      console.error('[ERROR SLACK] Result.ts:', result.ts);
+      console.error('[ERROR SLACK] Full result:', JSON.stringify(result, null, 2));
       throw new Error(`Failed to send Slack message: ok=${result.ok}, ts=${result.ts}`);
     }
 
     // Store the email content in Vercel KV by message timestamp for later retrieval
     if (emailContent && result.ts) {
       console.log('[DEBUG SLACK] Storing email in KV with key:', result.ts);
-      await storeEmail(result.ts, emailContent);
-      console.log('[DEBUG SLACK] Email stored in KV successfully');
+      try {
+        await storeEmail(result.ts, emailContent);
+        console.log('[DEBUG SLACK] ✓ Email stored in KV successfully');
+      } catch (kvError) {
+        console.error('[ERROR SLACK] Failed to store email in KV:', kvError);
+        console.error('[ERROR SLACK] KV Error:', (kvError as any)?.message);
+        // Don't throw - KV storage is not critical
+      }
     }
 
     console.log('[DEBUG SLACK] ========== SLACK MESSAGE SENT SUCCESSFULLY ==========');
@@ -243,10 +261,13 @@ export async function sendSlackMessageWithButtons(
       channel: result.channel!
     };
   } catch (error) {
+    console.error('[ERROR SLACK] ========== SLACK MESSAGE SEND FAILED ==========');
     console.error('[ERROR SLACK] chat.postMessage failed');
     console.error('[ERROR SLACK] Error:', error);
     console.error('[ERROR SLACK] Error message:', (error as any)?.message);
     console.error('[ERROR SLACK] Error code:', (error as any)?.code);
+    console.error('[ERROR SLACK] Error status:', (error as any)?.status);
+    console.error('[ERROR SLACK] Full error:', JSON.stringify(error, null, 2));
     throw error;
   }
 }
