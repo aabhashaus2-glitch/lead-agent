@@ -45,13 +45,13 @@ export const workflowInbound = async (data: FormSchema) => {
     else if (qualification.category === 'SUPPORT') {
       // SUPPORT PATH: Alert support team  
       console.log('[DEBUG WORKFLOW] Step 3: Route to Support (Support Path)');
-      await stepHumanFeedback(research, '', { ...qualification, isSupport: true });
+      await stepHumanFeedback(research, '', qualification);
       console.log('[DEBUG WORKFLOW] Support team alerted via Slack');
     }
     else if (qualification.category === 'UNQUALIFIED') {
       // UNQUALIFIED PATH: Log and notify
       console.log('[DEBUG WORKFLOW] Step 3: Log Unqualified Lead');
-      await stepHumanFeedback(research, '', { ...qualification, isUnqualified: true });
+      await stepHumanFeedback(research, '', qualification);
       console.log('[DEBUG WORKFLOW] Unqualified lead logged and notified');
     }
 
