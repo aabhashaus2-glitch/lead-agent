@@ -285,99 +285,91 @@ export async function humanFeedback(
   qualification: QualificationSchema
 ) {
   console.log('[DEBUG HF] ========== HUMAN FEEDBACK INITIATED ==========');
-  console.log('[DEBUG HF] Research length:', research?.length || 'undefined');
-  console.log('[DEBUG HF] Email length:', email?.length || 'undefined');
-  console.log('[DEBUG HF] Email content exists:', !!email && email.trim().length > 0);
   console.log('[DEBUG HF] Qualification category:', qualification?.category);
-  console.log('[DEBUG HF] Qualification reason:', qualification?.reason);
+  console.log('[DEBUG HF] Email length:', email?.length || 'no email');
   
   // Extract key background verification data for Slack display
-  // Parse the research report to get actual field values
   const extractedData = extractBackgroundVerificationFields(research);
   
-  // SHOW FULL EMAIL (not truncated) so you can review before approving/rejecting
-  const sanitizedEmail = email
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .trim();
-  
-  const sanitizedReason = qualification.reason
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .trim();
-
-  // ENHANCED MESSAGE: Show real verified data in structured format
-  const message = `*🎯 New Lead Qualification*
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-*Category:* ${qualification.category}
-*Confidence:* ${qualification.reason.split('%')[0]}%
-*Decision Reasoning:* 
-${sanitizedReason}
-
-*📊 BACKGROUND VERIFICATION RESULTS:*
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-${extractedData}
-
-*❓ WHY THIS DECISION?*
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-✅ QUALIFIED SIGNALS:
-  • Corporate email domain (not personal Gmail)
-  • Company exists and is verifiable
-  • Strong financial status
-  • Low risk profile
-
-⚠️ WHY NOT QUALIFIED (YET):
-  • Company size: Unknown (limits fit assessment)
-  • Industry: Unknown (may not be target market)
-  • Decision-maker title: Not verified (authority unclear)
-  • Tech compatibility: Low (tool fit concerns)
-
-💡 NEXT STEP: FOLLOW_UP
-  This lead shows genuine interest in scaling & pricing discussion.
-  Recommend reaching out to gather missing company details before full qualification.
-
-*📧 FULL EMAIL DRAFT:*
-\`\`\`
-${sanitizedEmail}
-\`\`\`
-
-⬇️ Please review and then:`;
-
-  
-  // Add helpful note about what user is seeing
-  console.log('[DEBUG HF] ✅ FULL email shown in Slack (not truncated)');
-  console.log('[DEBUG HF] Email length shown:', sanitizedEmail.length);
-  console.log('[DEBUG HF] Background verification data extracted for display');
-  console.log('[DEBUG HF] User can now review complete email before approving/rejecting');
-
   const slackChannel = process.env.SLACK_CHANNEL_ID || '';
-  
-  console.log('[DEBUG HF] Slack Channel:', slackChannel);
-  console.log('[DEBUG HF] Message length:', message.length);
-  console.log('[DEBUG HF] Full email is now visible in Slack (not truncated)');
-  console.log('[DEBUG HF] Email will be sent with full content on approval');
   
   if (!slackChannel) {
     console.error('[ERROR HF] SLACK_CHANNEL_ID is empty');
     throw new Error('SLACK_CHANNEL_ID environment variable is not set');
   }
 
+  let message = '';
+  
+  // BUILD DIFFERENT MESSAGE BASED ON CATEGORY
+  if (qualification.category === 'QUALIFIED' || qualification.category === 'FOLLOW_UP') {
+    // SALES PATH: Show email draft for approval
+    const sanitizedEmail = email
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .trim();
+    
+    const sanitizedReason = qualification.reason
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .trim();
+    
+    const categoryEmoji = qualification.category === 'QUALIFIED' ? '✅' : '🔄';
+    
+    message = `${categoryEmoji} *New Lead - ${qualification.category}*
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+*Reasoning:* ${sanitizedReason}
+
+*📊 Background Verification:*
+${extractedData}
+
+*📧 Email Draft:*
+\`\`\`
+${sanitizedEmail}
+\`\`\`
+
+Please review and:`;
+  }
+  else if (qualification.category === 'SUPPORT') {
+    // SUPPORT PATH: Alert support team
+    message = `🛠️ *SUPPORT REQUEST DETECTED*
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+*Action:* Route to Support Team
+*Reason:* ${qualification.reason}
+
+*📊 Lead Details:*
+${extractedData}
+
+⚠️ This is NOT a sales lead - needs technical support handling`;
+  }
+  else if (qualification.category === 'UNQUALIFIED') {
+    // UNQUALIFIED PATH: Log for analytics
+    message = `❌ *UNQUALIFIED LEAD*
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+*Reason:* ${qualification.reason}
+
+*📊 Lead Details:*
+${extractedData}
+
+📋 Lead logged for analytics and archival`;
+  }
+
   try {
     console.log('[DEBUG HF] Calling sendSlackMessageWithButtons...');
-    console.log('[DEBUG HF] Full email content available for approval');
-    console.log('[DEBUG HF] Email content length to send:', email.length);
+    console.log('[DEBUG HF] Category:', qualification.category);
     
-    const result = await sendSlackMessageWithButtons(slackChannel, message, email);
+    const result = await sendSlackMessageWithButtons(
+      slackChannel, 
+      message, 
+      email,
+      qualification.category
+    );
     
-    console.log('[DEBUG HF] ✓ sendSlackMessageWithButtons completed');
-    console.log('[DEBUG HF] Result:', result);
-    console.log('[DEBUG HF] Message timestamp:', result.messageTs);
-    console.log('[DEBUG HF] Channel:', result.channel);
+    console.log('[DEBUG HF] ✓ Slack message sent successfully');
     console.log('[DEBUG HF] ========== HUMAN FEEDBACK COMPLETE ==========');
     
     return result;
   } catch (error) {
-    console.error('[ERROR HF] ========== HUMAN FEEDBACK FAILED ==========');
+    console.error('[ERROR HF] ========== HUMAN FEEDBACK FAILED ==========');;
     console.error('[ERROR HF] Failed to send Slack message:', error);
     console.error('[ERROR HF] Error message:', (error as any)?.message);
     console.error('[ERROR HF] Error stack:', (error as any)?.stack);

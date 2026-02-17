@@ -31,19 +31,28 @@ export const workflowInbound = async (data: FormSchema) => {
     const qualification = await stepQualify(data, research);
     console.log('[DEBUG WORKFLOW] Qualification result:', qualification);
 
-    if (
-      qualification.category === 'QUALIFIED' ||
-      qualification.category === 'FOLLOW_UP'
-    ) {
-      console.log('[DEBUG WORKFLOW] Step 3: Write Email');
+    // ROUTE BASED ON CATEGORY
+    if (qualification.category === 'QUALIFIED' || qualification.category === 'FOLLOW_UP') {
+      // SALES PATH: Write email and send to Slack for approval
+      console.log('[DEBUG WORKFLOW] Step 3: Write Email (Sales Path)');
       const email = await stepWriteEmail(data, research, qualification);
       console.log('[DEBUG WORKFLOW] Email written, length:', email.length);
 
-      console.log('[DEBUG WORKFLOW] Step 4: Human Feedback');
+      console.log('[DEBUG WORKFLOW] Step 4: Send to Slack (Email Approval)');
       await stepHumanFeedback(research, email, qualification);
-      console.log('[DEBUG WORKFLOW] Human feedback step completed');
-    } else {
-      console.log('[DEBUG WORKFLOW] Lead does not qualify for email, category:', qualification.category);
+      console.log('[DEBUG WORKFLOW] Slack notification sent with email draft');
+    } 
+    else if (qualification.category === 'SUPPORT') {
+      // SUPPORT PATH: Alert support team  
+      console.log('[DEBUG WORKFLOW] Step 3: Route to Support (Support Path)');
+      await stepHumanFeedback(research, '', { ...qualification, isSupport: true });
+      console.log('[DEBUG WORKFLOW] Support team alerted via Slack');
+    }
+    else if (qualification.category === 'UNQUALIFIED') {
+      // UNQUALIFIED PATH: Log and notify
+      console.log('[DEBUG WORKFLOW] Step 3: Log Unqualified Lead');
+      await stepHumanFeedback(research, '', { ...qualification, isUnqualified: true });
+      console.log('[DEBUG WORKFLOW] Unqualified lead logged and notified');
     }
 
     console.log('[DEBUG WORKFLOW] Workflow completed successfully');

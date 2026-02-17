@@ -113,9 +113,11 @@ console.log('[DEBUG SLACK INIT] Slack module initialization complete');
 export async function sendSlackMessageWithButtons(
   channel: string,
   text: string,
-  emailContent?: string
+  emailContent?: string,
+  category?: string
 ): Promise<{ messageTs: string; channel: string }> {
-  console.log('[DEBUG SLACK] ========== SENDING SLACK MESSAGE WITH BUTTONS ==========');
+  console.log('[DEBUG SLACK] ========== SENDING SLACK MESSAGE ==========');
+  console.log('[DEBUG SLACK] Category:', category);
   
   if (!slackApp) {
     console.error('[ERROR SLACK] Slack app is not initialized');
@@ -131,8 +133,6 @@ export async function sendSlackMessageWithButtons(
   try {
     const authTest = await slackApp.client.auth.test();
     console.log('[DEBUG SLACK] ✓ Auth test successful');
-    console.log('[DEBUG SLACK] - User:', authTest.user);
-    console.log('[DEBUG SLACK] - Team:', authTest.team);
   } catch (authError) {
     console.error('[ERROR SLACK] Auth test failed:', authError);
     throw authError;
@@ -140,55 +140,87 @@ export async function sendSlackMessageWithButtons(
 
   console.log('[DEBUG SLACK] Channel:', channel);
   console.log('[DEBUG SLACK] Text length:', text?.length || 'undefined');
-  console.log('[DEBUG SLACK] Email content provided:', !!emailContent);
-  console.log('[DEBUG SLACK] Email content length:', emailContent?.length || 'N/A');
   
-  if (emailContent) {
-    console.log('[DEBUG SLACK] Email preview (first 100 chars):', emailContent.substring(0, 100));
+  // BUILD ACTION BUTTONS BASED ON CATEGORY
+  let actionElements: any[] = [];
+  
+  if (category === 'QUALIFIED' || category === 'FOLLOW_UP') {
+    // SALES PATH: Show Approve/Reject for email
+    actionElements = [
+      {
+        type: 'button',
+        text: {
+          type: 'plain_text',
+          text: 'Approve & Send'
+        },
+        style: 'primary',
+        action_id: 'lead_approved'
+      },
+      {
+        type: 'button',
+        text: {
+          type: 'plain_text',
+          text: 'Reject'
+        },
+        style: 'danger',
+        action_id: 'lead_rejected'
+      }
+    ];
+  } else if (category === 'SUPPORT') {
+    // SUPPORT PATH: Show support routing action
+    actionElements = [
+      {
+        type: 'button',
+        text: {
+          type: 'plain_text',
+          text: '✓ Route to Support'
+        },
+        style: 'primary',
+        action_id: 'support_acknowledged'
+      }
+    ];
+  } else if (category === 'UNQUALIFIED') {
+    // UNQUALIFIED PATH: Show archive action
+    actionElements = [
+      {
+        type: 'button',
+        text: {
+          type: 'plain_text',
+          text: '✓ Archive'
+        },
+        action_id: 'lead_archived'
+      }
+    ];
   }
 
-  // Send message with blocks including action buttons
+  // Send message with blocks including conditional action buttons
   console.log('[DEBUG SLACK] Calling chat.postMessage...');
   try {
+    const blocks: any[] = [
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text
+        }
+      }
+    ];
+    
+    // Only add action buttons if there are any
+    if (actionElements.length > 0) {
+      blocks.push({
+        type: 'actions',
+        elements: actionElements
+      });
+    }
+    
     const result = await slackApp.client.chat.postMessage({
       channel,
       text,
-      blocks: [
-        {
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text
-          }
-        },
-        {
-          type: 'actions',
-          elements: [
-            {
-              type: 'button',
-              text: {
-                type: 'plain_text',
-                text: 'Approve'
-              },
-              style: 'primary',
-              action_id: 'lead_approved'
-            },
-            {
-              type: 'button',
-              text: {
-                type: 'plain_text',
-                text: 'Reject'
-              },
-              style: 'danger',
-              action_id: 'lead_rejected'
-            }
-          ]
-        }
-      ]
+      blocks
     });
 
     console.log('[DEBUG SLACK] ✓ chat.postMessage succeeded');
-    console.log('[DEBUG SLACK] Response ok:', result.ok);
     console.log('[DEBUG SLACK] Message ts:', result.ts);
     console.log('[DEBUG SLACK] Channel:', result.channel);
 
