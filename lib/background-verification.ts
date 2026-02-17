@@ -414,7 +414,7 @@ export async function performBackgroundVerification(
           emailValidation.domain !== '' ? emailValidation.domain : undefined
         ),
         new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000))
-      ]);
+      ]) as Partial<VerificationResult['techStack']>;
       await new Promise(resolve => setTimeout(resolve, 500)); // Smaller delay after optional call
     } catch (error) {
       console.log('[BG-VERIFY] Tech stack skipped (timeout)');
@@ -429,7 +429,7 @@ export async function performBackgroundVerification(
           emailValidation.domain !== '' ? emailValidation.domain : undefined
         ),
         new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000))
-      ]);
+      ]) as Partial<VerificationResult['financialHealth']>;
     } catch (error) {
       console.log('[BG-VERIFY] Financial health skipped (timeout)');
     }
