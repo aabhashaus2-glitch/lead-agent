@@ -141,13 +141,12 @@ export async function researchCompany(
   console.log('[BG-VERIFY] Researching company:', companyName);
 
   try {
-    // Search for company information
+    // Search for company information (summaries only, no content)
     const searchQuery = domain ? `"${companyName}" site:${domain}` : companyName;
 
-    const result = await exa.searchAndContents(searchQuery, {
-      numResults: 3,
-      type: 'keyword',
-      summary: true
+    const result = await exa.search(searchQuery, {
+      numResults: 2,
+      type: 'keyword'
     });
 
     if (!result.results || result.results.length === 0) {
@@ -161,8 +160,8 @@ export async function researchCompany(
 
     const primaryResult = result.results[0];
     
-    // Extract key information from search results
-    const description = (primaryResult as any).content || primaryResult.title || '';
+    // Extract key information from search results (title only, no content fetch)
+    const description = primaryResult.title || '';
     const linkedinUrl = result.results.find(r => r.url.includes('linkedin'))?.url;
 
     console.log('[BG-VERIFY] Company found:', companyName);
@@ -218,15 +217,14 @@ export async function verifyDecisionMaker(
       titleLevel = 'Individual Contributor';
     }
 
-    // Search for LinkedIn profile
-    const linkedinSearch = await exa.searchAndContents(`${name} ${company} site:linkedin.com`, {
+    // Search for LinkedIn profile (summaries only)
+    const linkedinSearch = await exa.search(`${name} ${company} site:linkedin.com`, {
       numResults: 1,
-      type: 'keyword',
-      summary: true
+      type: 'keyword'
     });
 
     const linkedinUrl = linkedinSearch.results?.[0]?.url;
-    const linkedinMatch = linkedinUrl && ((linkedinSearch.results?.[0] as any)?.content || linkedinSearch.results?.[0]?.title || '').includes(title);
+    const linkedinMatch = linkedinUrl && (linkedinSearch.results?.[0]?.title || '').toLowerCase().includes(title.toLowerCase());
 
     console.log('[BG-VERIFY] Decision-maker verified:', { titleLevel, linkedinMatch });
 
@@ -257,8 +255,8 @@ export async function analyzeTechStack(
   try {
     const searchQuery = domain ? `${companyName} tech stack tools ${domain}` : `${companyName} technology stack`;
 
-    const result = await exa.searchAndContents(searchQuery, {
-      numResults: 2,
+    const result = await exa.search(searchQuery, {
+      numResults: 1,
       type: 'keyword'
     });
 
@@ -270,7 +268,7 @@ export async function analyzeTechStack(
       };
     }
 
-    const techContent = result.results.map(r => (r as any).content || r.title || '').join(' ');
+    const techContent = result.results.map(r => r.title || '').join(' ');
 
     // Extract common tech keywords
     const techKeywords = [
@@ -315,17 +313,16 @@ export async function checkFinancialHealth(
   try {
     const searchQuery = `"${companyName}" funding layoffs bankruptcy news 2024 2025`;
 
-    const result = await exa.searchAndContents(searchQuery, {
-      numResults: 3,
-      type: 'keyword',
-      summary: true
+    const result = await exa.search(searchQuery, {
+      numResults: 2,
+      type: 'keyword'
     });
 
     const redFlags: string[] = [];
     const recentNews: string[] = [];
 
     result.results?.forEach(article => {
-      const text = ((article as any).content || article.title || '').toLowerCase();
+      const text = article.title?.toLowerCase() || '';
       const title = article.title?.toLowerCase() || '';
 
       // Check for red flags
@@ -397,7 +394,7 @@ export async function performBackgroundVerification(
     const companyInfo = await researchCompany(lead.company || 'Unknown', 
       emailValidation.domain !== '' ? emailValidation.domain : undefined
     );
-    await new Promise(resolve => setTimeout(resolve, 500)); // 500ms delay
+    await new Promise(resolve => setTimeout(resolve, 1000)); // 1s delay for free tier rate limiting
     
     // Essential: Decision-maker verification
     const decisionMakerInfo = await verifyDecisionMaker(
@@ -406,9 +403,9 @@ export async function performBackgroundVerification(
       lead.company || 'Unknown',
       lead.email
     );
-    await new Promise(resolve => setTimeout(resolve, 500)); // 500ms delay
+    await new Promise(resolve => setTimeout(resolve, 1000)); // 1s delay for free tier rate limiting
     
-    // Optional: Tech stack analysis (fail fast if timeout)
+    // Optional: Tech stack analysis (fail fast if timeout - 3s max)
     let techStackInfo = { primaryTechs: [], compatibility: 'unknown' as const, matchAnalysis: 'Skipped (free tier)' };
     try {
       techStackInfo = await Promise.race([
@@ -416,14 +413,14 @@ export async function performBackgroundVerification(
           lead.company || 'Unknown',
           emailValidation.domain !== '' ? emailValidation.domain : undefined
         ),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Tech stack timeout - skipping')), 5000))
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000))
       ]);
-      await new Promise(resolve => setTimeout(resolve, 500)); // 500ms delay
+      await new Promise(resolve => setTimeout(resolve, 500)); // Smaller delay after optional call
     } catch (error) {
-      console.log('[BG-VERIFY] Tech stack analysis skipped (timeout on free tier)');
+      console.log('[BG-VERIFY] Tech stack skipped (timeout)');
     }
     
-    // Optional: Financial health check (fail fast if timeout)
+    // Optional: Financial health check (fail fast if timeout - 3s max)
     let financialInfo = { status: 'unknown' as const, redFlags: [], funding: 'Unknown', recentNews: [] };
     try {
       financialInfo = await Promise.race([
@@ -431,10 +428,10 @@ export async function performBackgroundVerification(
           lead.company || 'Unknown',
           emailValidation.domain !== '' ? emailValidation.domain : undefined
         ),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Financial health timeout - skipping')), 5000))
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000))
       ]);
     } catch (error) {
-      console.log('[BG-VERIFY] Financial health check skipped (timeout on free tier)');
+      console.log('[BG-VERIFY] Financial health skipped (timeout)');
     }
 
     console.log('[BG-VERIFY] Sequential research tasks completed');
