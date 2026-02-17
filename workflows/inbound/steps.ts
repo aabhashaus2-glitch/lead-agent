@@ -2,7 +2,7 @@ import {
   humanFeedback,
   qualify,
   writeEmail,
-  researchWithTimeout
+  deepResearch
 } from '@/lib/services';
 import { performBackgroundVerification } from '@/lib/background-verification';
 import { FormSchema, QualificationSchema } from '@/lib/types';
@@ -42,40 +42,17 @@ export const stepResearch = async (data: FormSchema) => {
     console.log('[RESEARCH] ========== STARTING REAL LEAD RESEARCH ==========');
     console.log('[RESEARCH] Lead:', data.name, 'Company:', data.company);
 
-    // PHASE 1: BACKGROUND VERIFICATION
+    // PHASE 1: BACKGROUND VERIFICATION (Operational Research)
     console.log('[RESEARCH] Phase 1: Running background verification...');
     const verification = await performBackgroundVerification(data);
 
-    // PHASE 2: AI AGENT RESEARCH
-    console.log('[RESEARCH] Phase 2: Running AI agent research...');
-    const researchPrompt = `
-Research this lead comprehensively:
-
-LEAD INFORMATION:
-- Name: ${data.name}
-- Email: ${data.email}
-- Company: ${data.company || 'Not provided'}
-- Phone: ${data.phone || 'Not provided'}
-- Message/Request: "${data.message}"
-
-BACKGROUND VERIFICATION RESULTS:
-${formatVerificationResults(verification)}
-
-Please use the tools available to:
-1. Search for more recent news about this company
-2. Verify the person's professional background
-3. Assess market fit and opportunity potential
-4. Identify growth stage and funding status
-5. Research any partnerships or integrations relevant to our product
-
-Synthesize all findings into a comprehensive research report.
-    `.trim();
-
-    const agentResearch = await researchWithTimeout(researchPrompt);
-    console.log('[RESEARCH] AI agent research completed, length:', agentResearch.length);
+    // PHASE 2: DEEP RESEARCH (Strategic Qualification Analysis)
+    console.log('[RESEARCH] Phase 2: Running deep research analysis...');
+    const deepAnalysis = await deepResearch(data, verification);
+    console.log('[RESEARCH] Deep research analysis completed, length:', deepAnalysis.length);
 
     // PHASE 3: COMPILE COMPLETE RESEARCH REPORT
-    const completeResearch = compileResearchReport(data, verification, agentResearch);
+    const completeResearch = compileResearchReport(data, verification, deepAnalysis);
 
     console.log('[RESEARCH] ========== RESEARCH COMPLETE ==========');
     console.log('[RESEARCH] Report length:', completeResearch.length);

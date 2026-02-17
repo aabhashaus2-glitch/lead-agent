@@ -535,60 +535,80 @@ const queryKnowledgeBase = tool({
  *
  * This agent is used to research the lead and return a comprehensive report
  */
-export const researchAgent = new Agent({
-  model: 'openai/gpt-5',
-  system: `
-  You are a researcher to find information about a lead. You are given a lead and you need to find information about the lead.
-  
-  You can use the tools provided to you to find information about the lead: 
-  - search: Searches the web for information
-  - queryKnowledgeBase: Queries the knowledge base for the given query
-  - fetchUrl: Fetches the contents of a public URL
-  - crmSearch: Searches the CRM for the given company name
-  - techStackAnalysis: Analyzes the tech stack of the given domain
-  
-  Synthesize the information you find into a comprehensive report.
-  `,
-  tools: {
-    search,
-    queryKnowledgeBase,
-    fetchUrl,
-    crmSearch,
-    techStackAnalysis
-    // add other tools here
-  },
-  stopWhen: [stepCountIs(20)] // stop after max 20 steps
-});
-
 /**
- * Wrapper function to handle research with timeout and error handling
+ * PHASE 2: DEEP RESEARCH - Comprehensive qualification analysis
+ * 
+ * This phase analyzes the lead for qualification signals without timeouts.
+ * It performs strategic analysis on:
+ * - Business need and problem clarity
+ * - Budget and purchase intent signals
+ * - Decision-maker authority level
+ * - Company fit against ICP
+ * - Growth and market opportunity
  */
-export async function researchWithTimeout(prompt: string): Promise<string> {
-  console.log('[DEBUG] Starting research with timeout protection');
+export async function deepResearch(
+  lead: FormSchema,
+  verification: any
+): Promise<string> {
+  console.log('[RESEARCH] PHASE 2: DEEP RESEARCH - Analyzing qualification signals');
   
   try {
-    // Set a 90-second timeout for the research (background verification + AI research)
-    const timeoutPromise = new Promise<string>((_, reject) =>
-      setTimeout(() => reject(new Error('Research timeout after 90 seconds')), 90000)
-    );
-    
-    const researchPromise = researchAgent.generate({ prompt });
-    
-    const result = await Promise.race([
-      researchPromise.then(r => {
-        console.log('[DEBUG] Research agent returned:', r.text ? r.text.substring(0, 100) : 'empty');
-        return r.text;
-      }),
-      timeoutPromise
-    ]);
-    
-    console.log('[DEBUG] Research completed successfully, length:', result.length);
-    return result;
+    // Use Claude without timeout to perform deep analysis
+    const deepAnalysis = await generateText({
+      model: 'openai/gpt-4o-mini',
+      system: `You are an expert B2B SaaS sales analyst. Perform deep research on leads to determine their qualification potential.
+
+Analyze the following dimensions:
+1. BUSINESS NEED: Is there a clear, specific problem stated?
+2. URGENCY: What's the timeline? (ASAP/this month = high, next quarter = medium, exploratory = low)
+3. BUDGET SIGNALS: Any indication of budget availability or decision authority?
+4. DECISION-MAKER: Is this likely a decision-maker based on language and context?
+5. COMPANY FIT: Does the company size/industry match tech/SaaS sector?
+6. GROWTH POTENTIAL: Is this a growing company with scalability?
+7. PROBLEM-SOLUTION FIT: Does our platform solve their stated problem?
+8. PRIMARY RISK: What's the biggest red flag or concern?
+
+Provide a structured analysis that ends with a RECOMMENDATION:
+- STRONG_FIT: High potential, multiple positive signals
+- GOOD_FIT: Decent potential, some positive signals  
+- UNCERTAIN_FIT: Mixed signals, needs clarification
+- POOR_FIT: Multiple concerns, low qualification potential`,
+      prompt: `
+LEAD INFORMATION:
+- Name: ${lead.name}
+- Email: ${lead.email}
+- Company: ${lead.company || 'Not provided'}
+- Phone: ${lead.phone || 'Not provided'}
+- Original Message: "${lead.message}"
+
+BACKGROUND VERIFICATION DATA:
+- Company Size: ${verification.companyInfo?.size || 'Unknown'}
+- Industry: ${verification.companyInfo?.industry || 'Unknown'}
+- Email Domain Safety: ${verification.emailValidation?.riskLevel || 'Unknown'}
+- Decision-maker Status: ${verification.decisionMaker?.titleLevel || 'Unknown'}
+- Tech Stack Compatibility: ${verification.techStack?.compatibility || 'Unknown'}
+- Financial Health: ${verification.financialHealth?.status || 'Unknown'}
+- Overall Risk Level: ${verification.riskLevel || 'Unknown'}
+
+TASK:
+Perform comprehensive qualification research on this lead. Analyze each dimension carefully.
+Look for patterns in the message that indicate business maturity, problem clarity, and purchase intent.
+Provide actionable insights for the sales team.
+      `.trim()
+    });
+
+    console.log('[RESEARCH] Deep research analysis completed');
+    return deepAnalysis;
   } catch (error) {
-    console.error('[ERROR] Research failed with error:', error);
-    // Return a fallback response instead of crashing
-    const fallback = `Unable to complete research: ${error instanceof Error ? error.message : 'Unknown error'}`;
-    console.log('[DEBUG] Using fallback research response');
+    console.error('[ERROR] Deep research failed:', error);
+    // Graceful fallback - use verification data as fallback
+    const fallback = `DEEP RESEARCH FALLBACK:
+Based on background verification:
+- Risk Level: ${verification.riskLevel}
+- Financial Status: ${verification.financialHealth?.status}
+- Decision-maker found: ${verification.decisionMaker?.titleLevel ? 'Yes' : 'No'}
+
+RECOMMENDATION: Review verification data above for qualification decision.`;
     return fallback;
   }
 }
