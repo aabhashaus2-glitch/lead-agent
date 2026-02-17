@@ -408,13 +408,13 @@ export async function performBackgroundVerification(
     // Optional: Tech stack analysis (fail fast if timeout - 3s max)
     let techStackInfo: Partial<VerificationResult['techStack']> = { primaryTechs: [], compatibility: 'unknown', matchAnalysis: 'Skipped (free tier)' };
     try {
-      techStackInfo = await Promise.race([
+      techStackInfo = (await Promise.race([
         analyzeTechStack(
           lead.company || 'Unknown',
           emailValidation.domain !== '' ? emailValidation.domain : undefined
         ),
         new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000))
-      ]);
+      ])) as Partial<VerificationResult['techStack']>;
       await new Promise(resolve => setTimeout(resolve, 500)); // Smaller delay after optional call
     } catch (error) {
       console.log('[BG-VERIFY] Tech stack skipped (timeout)');
@@ -423,13 +423,13 @@ export async function performBackgroundVerification(
     // Optional: Financial health check (fail fast if timeout - 3s max)
     let financialInfo: Partial<VerificationResult['financialHealth']> = { status: 'unknown', redFlags: [], funding: 'Unknown', recentNews: [] };
     try {
-      financialInfo = await Promise.race([
+      financialInfo = (await Promise.race([
         checkFinancialHealth(
           lead.company || 'Unknown',
           emailValidation.domain !== '' ? emailValidation.domain : undefined
         ),
         new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000))
-      ]);
+      ])) as Partial<VerificationResult['financialHealth']>;
     } catch (error) {
       console.log('[BG-VERIFY] Financial health skipped (timeout)');
     }
