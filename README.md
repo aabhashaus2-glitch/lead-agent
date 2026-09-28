@@ -1,176 +1,112 @@
-# Lead Agent
+# Lead Agent — AI Inbound Lead Qualification
 
-<img width="1819" height="1738" alt="hero" src="https://github.com/user-attachments/assets/347757fd-ad00-487d-bdd8-97113f13878b" />
+An AI agent that takes an inbound sales enquiry, verifies and researches the lead, decides whether it's worth a salesperson's time, drafts a personalised reply, and holds that reply in Slack until a human approves it.
 
-An inbound lead qualification and research agent built with [Next.js](http://nextjs.org/), [AI SDK](https://ai-sdk.dev/), [Workflow DevKit](https://useworkflow.dev/), and the [Vercel Slack Adapter](https://github.com/vercel-labs/slack-bolt). Hosted on the [Vercel AI Cloud](https://vercel.com/blog/the-ai-cloud-a-unified-platform-for-ai-workloads).
+Built as my individual capstone project for the Master of Business Analytics at Victoria University Sydney (Feb 2026).
 
-**_This is meant to serve as a reference architecture to be adapted to the needs of your specific organization._**
+> **Starting point:** this project extends Vercel's open-source [`lead-agent`](https://github.com/vercel-labs/lead-agent) reference architecture, which provides the Next.js app shell, the Workflow DevKit wiring and a basic Slack adapter with placeholder service functions. Everything listed under **What I built** below is my own work. The full split is visible in the commit history: template commits end in Dec 2025, mine start on 4 Feb 2026.
 
-## Overview
+---
 
-Lead agent app that captures a lead in a contact sales form and then kicks off a qualification workflow and deep research agent. It integrates with Slack to send and receive messages for human-in-the-loop feedback.
-
-- **Immediate Response** - Returns a success response to the user upon submission
-- **Workflows** - Uses Workflow DevKit to kick off durable background tasks
-  - **Deep Research Agent** - Conducts comprehensive research on the lead with a deep research agent
-  - **Qualify Lead** - Uses `generateObject` to categorize the lead based on the lead data and research report
-  - **Write Email** - Generates a personalized response email
-  - **Human-in-the-Loop** - Sends to Slack for human approval before sending
-  - **Slack Webhook** - Catches a webhook event from Slack to approve or deny the email
-
-## Deploy with Vercel
-
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fvercel-labs%2Flead-agent&env=AI_GATEWAY_API_KEY,SLACK_BOT_TOKEN,SLACK_SIGNING_SECRET,SLACK_CHANNEL_ID,EXA_API_KEY&project-name=lead-agent&repository-name=lead-agent)
-
-## Architecture
-
-<img width="1778" height="1958" alt="architecture" src="https://github.com/user-attachments/assets/53943961-4692-4b42-8e8d-47b03a01d233" />
+## What it does
 
 ```
-User submits form
-     ↓
-start(workflow) ← (Workflow DevKit)
-     ↓
-Research agent ← (AI SDK Agent)
-     ↓
-Qualify lead ← (AI SDK generateObject)
-     ↓
-Generate email ← (AI SDK generateText)
-     ↓
-Slack approval (human-in-the-loop) ← (Slack integration)
-     ↓
-Send email (on approval)
+Contact form submitted
+      │
+      ▼
+Durable workflow starts (Workflow DevKit) ── user gets an instant response
+      │
+      ▼
+1. Background verification ─ email domain, phone, company, decision-maker,
+      │                        tech stack, financial health, risk
+      ▼
+2. Deep research analysis  ─ need, urgency, budget, fit, growth, main risk
+      │
+      ▼
+3. Qualification           ─ QUALIFIED / FOLLOW_UP / UNQUALIFIED / SUPPORT
+      │                        + confidence score, ICP score, key factors
+      ▼
+4. Personalised email      ─ tone chosen from the category
+      │
+      ▼
+5. Slack approval          ─ full email + verification summary + reasoning,
+                               approve / reject buttons; nothing is sent without a human
 ```
 
-## Tech Stack
+## What I built
 
-- **Framework**: [Next.js 16](https://nextjs.org)
-- **Durable execution**: [Workflow DevKit](http://useworkflow.dev/)
-- **AI**: [Vercel AI SDK](https://ai-sdk.dev/) with [AI Gateway](https://vercel.com/ai-gateway)
-- **Human-in-the-Loop**: [Slack Bolt + Vercel Slack Bolt adapter](https://vercel.com/templates/ai/slack-agent-template)
-- **Web Search**: [Exa.ai](https://exa.ai/)
+**Background verification module** — [`lib/background-verification.ts`](lib/background-verification.ts) (~400 lines)
+- Email validation that separates corporate domains from public ones (Gmail, Outlook and so on).
+- Phone validation that catches fake and test numbers, such as `123456789`, repeated digits or runs of sequential digits.
+- Company research through the Exa search API: industry, headcount, location, funding, website and LinkedIn.
+- Decision-maker check: classifies the title (C-suite, VP/Director, Manager, IC) and looks for a matching LinkedIn profile.
+- Tech-stack detection and a financial-health scan for red flags such as layoffs, bankruptcy or fraud news.
+- An overall risk assessment with contributing factors and a recommendation.
+- Tuned for the Exa free tier: sequential calls with 1-second spacing, a 3-second timeout on optional checks, and graceful fallbacks so one slow API never fails the whole lead.
 
-## Slack Integration
+**Qualification rules engine** — [`lib/qualification-rules.ts`](lib/qualification-rules.ts)
+- An ideal-customer-profile (ICP) config covering company size, target industries, budget range, decision-maker titles, regions and growth stage.
+- Red-flag rules that send competitors, excluded industries, "student / hobby project" enquiries and budgets under $5K to UNQUALIFIED.
+- Support-keyword routing, so bug reports and billing questions go to SUPPORT instead of sales.
+- Signal counting for urgency, need, budget and decision authority, plus nurture signals ("next quarter", "evaluating") for FOLLOW_UP.
+- Confidence thresholds: auto-approve only at 80 or above, always require human review below 70, and log the 70–80 edge cases.
 
-This repo uses [Slack's Bolt for JavaScript](https://docs.slack.dev/tools/bolt-js/) with the [Vercel Slack Bolt adapter](https://vercel.com/changelog/build-slack-agents-with-vercel-slack-bolt).
+**AI services** — [`lib/services.ts`](lib/services.ts)
+- `qualify()`: structured output through the AI SDK's `generateObject` with a Zod schema that returns the category, reasoning, confidence, ICP score and key factors.
+- `deepResearch()`: a structured analysis across eight dimensions, ending in a STRONG / GOOD / UNCERTAIN / POOR fit recommendation.
+- `writeEmail()`: tone chosen from the category. Qualified leads get a direct, sales-focused email; follow-ups get an exploratory, nurturing one.
 
-Slack's Bolt is the recommended way to build Slack apps with the latest platform features. While Bolt was designed for traditional long-running Node servers, Vercel's `@vercel/slack-bolt` adapter allows use of it in a serverless environment. Combining Slack's Bolt with Vercel's adapter reduces complexity and makes it easy to subscribe to Slack events and perform actions in your app.
+**Slack human-in-the-loop** — [`lib/slack.ts`](lib/slack.ts)
+- Notifications for every lead category with category-specific buttons.
+- The full draft email plus a readable verification summary and the model's decision logic, so the reviewer sees why before approving.
+- Fast acknowledgement of Slack actions to avoid payload timeouts, and Vercel KV for message state (optional in development).
 
-## Using this template
+**Production hardening:** a Node runtime for the Slack route, TypeScript build fixes for Vercel, parallel-then-sequential tuning of the verification tasks against serverless timeouts, and extra logging for Slack delivery failures.
 
-This repo contains various empty functions to serve as placeholders. To fully use this template, fill out empty functions in `lib/services.ts`.
+**Documentation:** a product requirements document and a project knowledge document in [`docs/`](docs/), plus guides such as [`LEAD_QUALIFICATION_FRAMEWORK.md`](LEAD_QUALIFICATION_FRAMEWORK.md), [`CUSTOMIZATION_GUIDE.md`](CUSTOMIZATION_GUIDE.md) and [`ARCHITECTURE_DIAGRAM.md`](ARCHITECTURE_DIAGRAM.md).
 
-Example: Add a custom implementation of searching your own knowledge base in `queryKnowledgeBase`.
+## Tech stack
 
-Additionally, update prompts to meet the needs of your specific business function.
+| Layer | Tools |
+|---|---|
+| App | Next.js 16 (App Router, API routes), React 19, TypeScript, Tailwind CSS 4, shadcn/ui, React Hook Form |
+| Durable execution | Workflow DevKit (`workflow`) |
+| AI | Vercel AI SDK (`generateObject`, `generateText`) through the Vercel AI Gateway (`gpt-4o-mini`) |
+| Validation | Zod |
+| Research | Exa.ai |
+| Human-in-the-loop | Slack Bolt with `@vercel/slack-bolt`, Block Kit |
+| State and hosting | Vercel KV, Vercel |
 
-## Getting Started
+## Running it locally
 
-### Prerequisites
-
-- Node.js 20+
-- pnpm (recommended) or npm
-- Slack workspace with bot token and signing secret
-  - Reference the [Vercel Slack agent template docs](https://github.com/vercel-partner-solutions/slack-agent-template) for creating a Slack app
-  - You can set the permissions and configuration for your Slack app in the `manifest.json` file in the root of this repo. Paste this manifest file into the Slack dashboard when creating the app
-  - **Be sure to update the request URL for interactivity and event subscriptions to be your production domain URL**
-  - If Slack environment variables are not set, the app will still run with the Slack bot disabled
-- [Vercel AI Gateway API Key](https://vercel.com/d?to=%2F%5Bteam%5D%2F%7E%2Fai%2Fapi-keys%3Futm_source%3Dai_gateway_landing_page&title=Get+an+API+Key)
-- [Exa API key](https://exa.ai/)
-
-### Installation
-
-1. Clone the repository:
+Requirements: Node.js 20+, pnpm, a Slack app (the manifest is in `manifest.json`), a Vercel AI Gateway key and an Exa API key.
 
 ```bash
-git clone https://github.com/vercel-labs/lead-agent.git
+git clone https://github.com/aabhashaus2-glitch/lead-agent.git
 cd lead-agent
-```
-
-2. Install dependencies:
-
-```bash
 pnpm install
-```
-
-3. Set up environment variables:
-
-```bash
-cp .env.example .env.local
-```
-
-Configure the following variables:
-
-```bash
-# Vercel AI Gateway API Key
-AI_GATEWAY_API_KEY
-
-# Slack Bot
-SLACK_BOT_TOKEN
-SLACK_SIGNING_SECRET
-SLACK_CHANNEL_ID
-
-# Exa API Key
-EXA_API_KEY
-```
-
-4. Run the development server:
-
-```bash
+cp .env.example .env.local   # add AI_GATEWAY_API_KEY, EXA_API_KEY, SLACK_BOT_TOKEN, SLACK_SIGNING_SECRET, SLACK_CHANNEL_ID
 pnpm dev
 ```
 
-5. Open [http://localhost:3000](http://localhost:3000) to see the application and submit a test lead.
+Open http://localhost:3000 and submit a test lead. If the Slack variables are missing, the app still runs with the Slack step disabled.
 
-## Project Structure
+## Project structure
 
 ```
-lead-agent/
-├── app/
-│   ├── api/
-│   │   ├── submit/       # Form submission endpoint that kicks off workflow
-│   │   └── slack/        # Slack webhook handler (receives slack events)
-│   └── page.tsx          # Home page
-├── lib/
-│   ├── services.ts       # Core business logic (qualify, research, email)
-│   ├── slack.ts          # Slack integration
-│   └── types.ts          # TypeScript schemas and types
-├── components/
-│   ├── lead-form.tsx     # Main form component
-└── workflows/
-    └── inbound/          # Inbound lead workflow
-        ├── index.ts      # Exported workflow function
-        └── steps.ts      # Workflow steps
+app/api/submit/        form endpoint that starts the workflow
+app/api/slack/         Slack events and button actions
+workflows/inbound/     the durable workflow and its steps
+lib/background-verification.ts   verification and risk checks (mine)
+lib/qualification-rules.ts       ICP and qualification rules (mine)
+lib/services.ts        qualify / research / email (extended)
+lib/slack.ts           Slack messages and approval (extended)
+docs/                  PRD and project knowledge document
 ```
 
-## Key Features
+## Credits
 
-### Workflow durable execution with `use workflow`
-
-This project uses [Workflow DevKit](https://useworkflow.dev) to kick off a workflow that runs the agent, qualification, and other actions.
-
-### AI-Powered Qualification
-
-Leads are automatically categorized (QUALIFIED, FOLLOW_UP, SUPPORT, etc.) using the latest OpenAI model via the Vercel AI SDK and `generateObject`. Reasoning is also provided for each qualification decision. Edit the qualification categories by changing the `qualificationCategorySchema` in `lib/types.ts`.
-
-### AI SDK Agent class
-
-Uses the [AI SDK Agent class](https://ai-sdk.dev/docs/agents/overview) to create an autonomous research agent. Create new tools for the Agent and edit prompts in `lib/services.ts`.
-
-### Human-in-the-Loop Workflow
-
-Generated emails are sent to Slack with approve/reject buttons, ensuring human oversight before any outbound communication.
-
-The Slack message is defined with [Slack's Block Kit](https://docs.slack.dev/block-kit/). It can be edited in `lib/slack.ts`.
-
-### Extensible Architecture
-
-- Add new qualification categories in the `qualificationCategorySchema` in `types.ts`
-- Adjust the prompts and configuration for all AI calls in `lib/services.ts`
-- Alter the agent by tuning parameters in `lib/services.ts`
-- Add new service functions if needed in `lib/services.ts`
-- Follow [Vercel Workflow docs](https://useworkflow.dev) to add new steps to the workflow
-- Create new workflows for other qualification flows, outbound outreach, etc.
+Base architecture: [vercel-labs/lead-agent](https://github.com/vercel-labs/lead-agent) (MIT). Extensions by **Aabhash Bhattacharya**: [aabhash.in](https://aabhash.in) · [LinkedIn](https://www.linkedin.com/in/aabhash-bhattacharya).
 
 ## License
 
